@@ -1,162 +1,185 @@
-# Checkmk plugin development template
+# Checkmk plugin: Windows service accounts
 
-Devcontainer template for developing Checkmk extensions (agent-based checks,
-special agents, rulesets, graphing, bakery plugins, MKPs) with a real Checkmk
-site and Claude Code. Clone it once per plugin.
+Shows which Windows services do not run under a built-in system account
+(Local System, Local Service, Network Service, `NT SERVICE\...`) but under a
+service account: a domain account, a local user or a managed service account.
+Optionally alerts on accounts that are not allowed, on unwanted accounts and
+on changes since the service discovery.
 
-What you get:
+- One service `Service Accounts` per Windows host
+- HW/SW inventory table with a view to search an account across all hosts
+- Agent plugin `service_accounts.ps1`, deployed with the agent bakery
 
-- A Checkmk site `cmk` (official `checkmk/check-mk-<edition>` image), started
-  on every container start, GUI login `cmkadmin`/`cmkadmin`
-- Workspace directories bind-mounted into the site's `local/` hierarchy, so
-  plugin changes are live without copying
-- Python tooling: pytest, pytest-cov and requests-mock in the site Python
-  (pytest ships with Checkmk 2.4, the image adds it for 2.5); black, isort and
-  flake8 in a separate venv (configured in `pyproject.toml` / `.flake8`)
-- Claude Code (native installer, updates itself) with the
-  [checkmk-plugin-dev skill](https://github.com/chexma/claude_code_checkmk_plugin_skill),
-  installed as a plugin and updated on every container start. Project
-  settings in `.claude/settings.json`: routine commands (pytest, black, isort,
-  flake8, `cmk -v`, `ci.sh`, `test-host.sh`) run without prompts,
-  `mkp release`/`mkp disable` are denied, and a hook formats every Python
-  file Claude edits with black/isort
-- `.devcontainer/build.sh` to build the MKP from the `package` manifest
-- `.devcontainer/test-host.sh` to create a host whose agent output comes from
-  a file, for discovery/check runs against canned data
-- GitHub Actions (`.github/workflows/ci.yml`): lint, pytest and
-  `cmk-validate-plugins` in the devcontainer image on every push; on a tag
-  `v<version>` also the MKP as a GitHub release
+Status: the server side is tested (pytest, Checkmk 2.5.0p15 site with canned
+agent output). The PowerShell agent plugin has not been run on real Windows
+hosts yet.
 
-Requirements: Docker (Desktop) and VS Code with the Dev Containers extension.
-`initializeCommand` uses `mkdir -p` on the host, i.e. a macOS/Linux host (or WSL).
+## Requirements
 
-## Start a new plugin
+- Checkmk 2.5. The version number of the plugin follows the Checkmk release:
+  2.5.x is for Checkmk 2.5.
+- A commercial edition for the agent bakery. Without the bakery, copy
+  `service_accounts.ps1` to the plugin directory of the Windows agent by hand.
+- Windows hosts with PowerShell 5.1 or newer.
 
-```bash
-git clone https://github.com/chexma/checkmk-plugin-template.git checkmk_plugin_foo
-cd checkmk_plugin_foo
-.devcontainer/init-plugin.sh foo <url-of-the-new-plugin-repo>
-```
+The plugin uses the APIs `cmk.bakery.v2_unstable` and
+`cmk.inventory_ui.v1_unstable`, which Checkmk declares unstable in 2.5; a later
+Checkmk release may need an adapted plugin version.
 
-`init-plugin.sh` creates `CLAUDE.local.md` (see below) and `plugins/foo/`,
-renames the template remote to `template` and sets `origin`
-(leave out the URL to keep the remotes as they are). Then:
+## Installation
 
-1. Set `EDITION` and `VARIANT` (Checkmk version) in
-   `.devcontainer/devcontainer.json`.
-2. Describe the plugin in `CLAUDE.local.md`, commit.
-3. VS Code: "Dev Containers: Reopen in Container". Without VS Code:
-   `npx -y @devcontainers/cli@latest up --workspace-folder .` builds and
-   starts the same container (VS Code reuses it later).
-4. First time only: run `claude` in the container terminal and log in. The
-   login lives in the Docker volume `checkmk-claude-config`, which all plugin
-   containers share, so this is needed once per machine, not per plugin.
-   Also accept the trust dialog for the workspace (once per plugin): until
-   then Claude Code ignores the project's permissions and the format hook in
-   `.claude/settings.json`.
-   Caveat: there are reports that Claude instances in several containers
-   writing `.claude.json` in that volume at the same moment can corrupt it
-   (Claude Code then asks for a new login). If you work that way, give each
-   project its own volume (`checkmk-claude-config-${localWorkspaceFolderBasename}`
-   in `devcontainer.json`).
-5. Open the Checkmk GUI via the forwarded port 5000 (Ports view), path `/cmk/`.
-
-## Claude instructions: CLAUDE.md and CLAUDE.local.md
-
-`CLAUDE.md` is generic (environment, commands, MKP rules), comes from the
-template and is tracked. Everything about the plugin itself (purpose,
-external system, architecture, conventions) goes into `CLAUDE.local.md`:
-Claude Code loads it next to `CLAUDE.md`, but git ignores it, so nothing
-about the plugin is exposed in the repo. It exists only on your machine, as
-does Claude's memory in the `checkmk-claude-config` volume: keep a copy if
-you need it elsewhere.
-
-## Test against canned agent output
+Upload the MKP in *Setup > Extension packages* and enable it, or on the command
+line as site user:
 
 ```bash
-.devcontainer/test-host.sh myhost temp/myhost.agent_output   # or a script with #!
-cmk -vI --detect-plugins=<plugin> myhost
-cmk -v --detect-plugins=<plugin> myhost
-.devcontainer/test-host.sh --remove myhost
+mkp add service_accounts-<version>.mkp
+mkp enable service_accounts <version>
 ```
 
-## CI and releases
+## Setup
 
-`.devcontainer/ci.sh` runs the same checks as CI; run it before pushing.
-To release: bump `version` in `package`, commit, then
-`git tag v<version> && git push origin v<version>`. CI builds the MKP and
-attaches it to a GitHub release; it fails if the tag and `version` differ.
+1. *Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > Service
+   accounts (Windows)*: create a rule with *Deploy the plugin* for the Windows
+   hosts. Optionally let the plugin run asynchronously with a cache interval
+   (suggested: 1 hour); useful where translating accounts takes long because a
+   domain is not reachable.
+2. Bake and deploy the agents.
+3. Run the service discovery on the hosts. Each host gets the service
+   `Service Accounts`.
+4. For the inventory table the HW/SW inventory has to be enabled for the hosts
+   (rule *Do HW/SW inventory*).
 
-## Migrate an existing plugin
+Without a rule for the service it is always OK and only shows the accounts.
 
-For plugin folders from an older devcontainer setup (with or without git):
-`.devcontainer/MIGRATION.md` is a step-by-step guide for Claude Code in the
-old container. In that container, ask Claude:
+## Service
+
+Summary, for example:
 
 ```text
-Add https://github.com/chexma/checkmk-plugin-template.git as git remote
-"template" (run `git init -b main` first if this is no git repo), fetch it and
-follow `git show template/main:.devcontainer/MIGRATION.md`, phase 1.
+5 services under 4 service accounts, CONTOSO\old_admin: not on the allow list (1 service)(!)
 ```
 
-Then rebuild the container in VS Code and, in the new container:
-`Follow .devcontainer/MIGRATION.md, phase 2.`
+The details list every account with its kind, SID and services:
 
-## Get template updates into a plugin repo
+```text
+CONTOSO\svc_sql (domain account, S-1-5-21-4000-5000-6000-1105)
+  MSSQLSERVER (SQL Server): Auto, Running
+  SQLAgent (SQL Server Agent): Manual, Stopped
+```
+
+At most 10 findings are named in the summary, the worst first; further ones
+are counted there and listed in the details.
+
+Metrics: number of services under service accounts and number of distinct
+service accounts, with a graph and a perfometer.
+
+### Account kinds
+
+Every account gets a kind, by its SID if the agent could translate the
+account, otherwise by its name:
+
+| Kind | Recognised by | Built-in by default |
+|---|---|---|
+| Local System | `S-1-5-18`, `LocalSystem` | yes |
+| Local Service | `S-1-5-19` | yes |
+| Network Service | `S-1-5-20` | yes |
+| Virtual account | `S-1-5-80-*`, `NT SERVICE\...` | yes |
+| No account | empty account, e.g. per-user service instances | yes |
+| Local user | SID of the computer, `.\name`, `<computer>\name` | no |
+| Managed service account | domain SID and name ends with `$` | no |
+| Domain account | any other domain SID, `DOMAIN\name`, `name@domain` | no |
+| Unknown | anything else | no |
+
+Services under built-in kinds are not reported. Because the kind comes from
+the SID, this works independently of the language of the operating system.
+
+### Rule *Service accounts (Windows)*
+
+*Setup > Services > Service monitoring rules*. All settings are optional.
+
+| Setting | Effect |
+|---|---|
+| Built-in accounts | Which kinds are unremarkable and not reported |
+| Disabled services | Ignore services with the start mode Disabled (by default they are evaluated: Windows keeps their credentials) |
+| Allowed accounts | Patterns for accounts that are always OK and exempt from the other settings |
+| Additional allowed accounts | Like the allow list, but added to the list of a more general rule instead of replacing it |
+| State for accounts that are not allowed | State for every reported account that is not on the allow list |
+| Unwanted accounts | Patterns with a state, e.g. for personal or administrator accounts; the first matching entry counts |
+| Changes since the service discovery | States for added services, changed accounts and removed services |
+| State if the agent plugin reported an error | Default UNKNOWN |
+
+Patterns are regular expressions that have to match the whole account,
+ignoring case. They are tried against the account name as configured in the
+service and against its SID:
+
+- A backslash is written as `\\`: `CONTOSO\\svc_.*`
+- `$HOSTNAME$` is replaced by the computer name: `$HOSTNAME$\\backup` matches
+  the local user `backup` on every host, also if the service is configured
+  with `.\backup`.
+- An account configured in several spellings (`CONTOSO\svc_sql` and
+  `svc_sql@contoso.example`) is matched under each of them.
+
+### Changes since the service discovery
+
+The service discovery remembers the account of every service. With the
+setting *Changes since the service discovery* the check reports differences
+for services whose old or new account is a reported account that is not on
+the allow list:
+
+- a new service
+- a service whose account changed, e.g. from Local System to a domain account
+- a service that no longer exists
+
+To accept a change, update the service parameters in the service discovery of
+the host. Services without an account are left out of the comparison.
+
+## Inventory
+
+Table *Software > Applications > Service accounts* with one row per service
+that does not run under a built-in kind: service, display name, account,
+kind, start mode and state. The view *Service accounts* (search:
+`invserviceaccounts_search`) finds the hosts and services that use an
+account; it shows rows after a filter was submitted.
+
+## Limitations
+
+- Computer accounts (`DOMAIN\HOST$`) are shown as managed service accounts.
+- An account in UPN notation that cannot be translated to a SID is shown as
+  domain account.
+- On a domain controller the accounts are classified by name, because there
+  are no local accounts to tell the machine SID from.
+- While the agent plugin reports an error, the inventory table is empty.
+- Not covered: scheduled tasks, IIS application pools and other places that
+  store credentials; whether an account is privileged; Linux.
+
+## Agent output
+
+```text
+<<<service_accounts:sep(124)>>>
+computer|<computer name>|<machine SID>
+service|<name>|<display name>|<account>|<account SID>|<start mode>|<state>
+error|<message>
+```
+
+The plugin reports every service unfiltered and has no configuration file:
+all evaluation happens on the Checkmk server, so changing a rule never
+requires baking agents.
+
+## Development
+
+The repo is based on
+[checkmk-plugin-template](https://github.com/chexma/checkmk-plugin-template)
+(devcontainer with a Checkmk site; see its README for the environment).
 
 ```bash
-git pull template main
+.devcontainer/ci.sh                    # lint, tests, cmk-validate-plugins
+.devcontainer/build.sh                 # build the MKP from ./package
+.devcontainer/test-host.sh <host> <agent-output-file>   # host with canned agent output
 ```
 
-Template files (`.devcontainer/`, tool configs) and plugin code don't
-overlap, so this usually merges cleanly.
+Design and decisions: `docs/superpowers/specs/2026-10-13-service-accounts-design.md`.
+Changes: `Changelog.md`.
 
-## Layout
+## License
 
-| Directory | Mounted / linked to (site `cmk`) | Use |
-|---|---|---|
-| `plugins/` | `local/lib/python3/cmk_addons/plugins/` | New-style plugins (`<family>/agent_based`, `rulesets`, ...) |
-| `lib/` | `local/lib/python3/cmk/` | Library extensions (e.g. bakery v1) |
-| `plugins_legacy/` | `local/share/check_mk/` | Legacy plugin locations |
-| `agents/` | `local/share/check_mk/agents/` | Agent plugins for the bakery |
-| `bin/` | `local/bin/` | Scripts |
-| `nagios_plugins/` | `local/lib/nagios/plugins/` | Active check executables |
-| `temp/` | – | Scratch space (test data, agent output), not tracked |
-| `tests/` | – | pytest |
-
-## Notes
-
-- The container starts the site, cleans stale PID files and refreshes the
-  skill plugin on **every** start; the log is
-  `~/var/log/devcontainer-poststart.log`.
-- `.devcontainer/requirements-site.txt` is installed into the site by
-  `install-site-requirements.py`: the site's `pip3` always installs with
-  `--target`, which would otherwise add local copies of packages Checkmk ships
-  (urllib3, requests, pytest, ...) that shadow the shipped ones. The script
-  installs with `--no-deps` and adds only dependencies the Checkmk version
-  lacks, at the versions in `constraints-site.txt` (pin new ones there).
-  Standalone tools go into `requirements-tools.txt` (own venv).
-- All tool versions are pinned; bump them deliberately and rebuild. VS Code
-  is configured to use the pinned black/isort/flake8 from the image, not the
-  ones bundled with its extensions.
-- Rebuilds pick up a new Checkmk version from `VARIANT`; Claude Code updates
-  itself, no rebuild needed for that. Checkmk 2.5 renamed the editions
-  (images `check-mk-community`, `-pro`, `-ultimate`, `-ultimatemt`; `cloud`
-  became `ultimate`), so moving to 2.5 changes `EDITION` too.
-- The Checkmk images exist for `linux/amd64` only. On Apple Silicon they run
-  emulated; enable "Use Rosetta for x86_64/amd64 emulation" in Docker Desktop.
-- Releases are documented in `Changelog.md`; built `*.mkp` files are not
-  tracked (CI attaches them to the GitHub release).
-- Since Checkmk 2.5 every config generation (`cmk -U`/`-R`, activation)
-  copies `~/local` into a snapshot and fails on symlinks there that point to
-  directories outside it (`IsADirectoryError`). Workspace directories are
-  therefore bind mounts, never symlinks. Containers created from older
-  template versions had such links (`~/local/tmp`, `~/local/lib/nagios/plugins`):
-  pull the template and rebuild. Until then:
-  `rm ~/local/tmp ~/local/lib/nagios/plugins` (removes only the links) and
-  `cmk -R`; active checks in `nagios_plugins/` are unavailable meanwhile.
-- Several plugin containers can run at once: port 5000 is forwarded to a free
-  local port per container.
-- No CPU or memory limits are set. If Pylance (installed with the Python
-  extension) gets killed on large code bases, give the Docker Desktop VM more
-  memory; `--memory=...` in `runArgs` would only add a cap.
+GNU General Public License v3, see `LICENSE`.
