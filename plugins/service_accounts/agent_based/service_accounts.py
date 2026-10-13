@@ -56,3 +56,72 @@ agent_section_service_accounts = AgentSection(
     name="service_accounts",
     parse_function=parse_service_accounts,
 )
+
+
+DEFAULT_BUILTIN_KINDS = ("local_system", "local_service", "network_service", "virtual")
+
+
+KIND_TITLES = {
+    "local_system": "Local System",
+    "local_service": "Local Service",
+    "network_service": "Network Service",
+    "virtual": "virtual account",
+    "local_user": "local user",
+    "managed": "managed service account",
+    "domain": "domain account",
+    "unknown": "unknown account",
+}
+
+
+_WELL_KNOWN_SIDS = {
+    "S-1-5-18": "local_system",
+    "S-1-5-19": "local_service",
+    "S-1-5-20": "network_service",
+}
+
+
+_WELL_KNOWN_NAMES = {
+    "localsystem": "local_system",
+    ".\\localsystem": "local_system",
+    "nt authority\\system": "local_system",
+    "nt authority\\localservice": "local_service",
+    "nt authority\\local service": "local_service",
+    "nt authority\\networkservice": "network_service",
+    "nt authority\\network service": "network_service",
+}
+
+
+def _is_local_name(account: str, computer: str) -> bool:
+    domain, sep, _user = account.partition("\\")
+    return bool(sep) and (domain == "." or (bool(computer) and domain.lower() == computer.lower()))
+
+
+def classify(account: str, sid: str, computer: str, machine_sid: str) -> str:
+    """Return the kind of an account, by SID if there is one, otherwise by name."""
+    sid = sid.upper()
+    if sid:
+        if sid in _WELL_KNOWN_SIDS:
+            return _WELL_KNOWN_SIDS[sid]
+        if sid.startswith("S-1-5-80-"):
+            return "virtual"
+        if not sid.startswith("S-1-5-21-"):
+            return "unknown"
+        if machine_sid:
+            if sid.startswith(machine_sid.upper() + "-"):
+                return "local_user"
+        elif _is_local_name(account, computer):
+            return "local_user"
+        return "managed" if account.endswith("$") else "domain"
+
+    name = account.lower()
+    if name in _WELL_KNOWN_NAMES:
+        return _WELL_KNOWN_NAMES[name]
+    if name.startswith("nt service\\"):
+        return "virtual"
+    if _is_local_name(account, computer):
+        return "local_user"
+    if "\\" in account:
+        return "managed" if account.endswith("$") else "domain"
+    if "@" in account:
+        return "domain"
+    return "unknown"

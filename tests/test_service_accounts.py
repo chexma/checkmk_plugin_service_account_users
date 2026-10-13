@@ -87,3 +87,58 @@ def test_parse_error_line() -> None:
 
 def test_parse_german_account_name(section) -> None:
     assert section.services[2].account == "NT-AUTORITÄT\\Netzwerkdienst"
+
+
+# --- classification ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "account, sid, kind",
+    [
+        ("LocalSystem", "S-1-5-18", "local_system"),
+        ("NT-AUTORITÄT\\Lokaler Dienst", "S-1-5-19", "local_service"),
+        ("NT-AUTORITÄT\\Netzwerkdienst", "S-1-5-20", "network_service"),
+        ("NT SERVICE\\MSSQL$X", "S-1-5-80-1-2-3-4-5", "virtual"),
+        (".\\backup", MACHINE_SID + "-1001", "local_user"),
+        ("SRV-APP01\\backup", MACHINE_SID + "-1001", "local_user"),
+        ("CONTOSO\\gmsa_web$", DOMAIN_SID + "-1106", "managed"),
+        ("CONTOSO\\svc_sql", DOMAIN_SID + "-1105", "domain"),
+        ("svc_sql@contoso.example", DOMAIN_SID + "-1105", "domain"),
+        ("CONTOSO\\svc_sql", DOMAIN_SID.lower() + "-1105", "domain"),
+        ("IIS APPPOOL\\DefaultAppPool", "S-1-5-82-1-2-3-4-5", "unknown"),
+    ],
+)
+def test_classify_by_sid(account: str, sid: str, kind: str) -> None:
+    assert sa.classify(account, sid, "SRV-APP01", MACHINE_SID) == kind
+
+
+@pytest.mark.parametrize(
+    "account, kind",
+    [
+        ("LocalSystem", "local_system"),
+        (".\\LocalSystem", "local_system"),
+        ("nt authority\\system", "local_system"),
+        ("NT AUTHORITY\\LocalService", "local_service"),
+        ("NT AUTHORITY\\NetworkService", "network_service"),
+        ("NT Service\\MSSQL$X", "virtual"),
+        (".\\backup", "local_user"),
+        ("srv-app01\\backup", "local_user"),
+        ("CONTOSO\\gmsa_web$", "managed"),
+        ("CONTOSO\\svc_sql", "domain"),
+        ("svc_sql@contoso.example", "domain"),
+        ("something", "unknown"),
+        ("", "unknown"),
+    ],
+)
+def test_classify_by_name(account: str, kind: str) -> None:
+    assert sa.classify(account, "", "SRV-APP01", MACHINE_SID) == kind
+
+
+def test_classify_without_machine_sid_uses_the_name_for_local_users() -> None:
+    assert sa.classify(".\\backup", MACHINE_SID + "-1001", "SRV-APP01", "") == "local_user"
+    assert sa.classify("CONTOSO\\svc_sql", DOMAIN_SID + "-1105", "SRV-APP01", "") == "domain"
+
+
+def test_classify_machine_sid_is_not_a_string_prefix() -> None:
+    # S-1-5-21-1000-2000-30001-500 belongs to another machine or domain
+    assert sa.classify("CONTOSO\\x", MACHINE_SID + "1-500", "SRV-APP01", MACHINE_SID) == "domain"
