@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 chexma - License: GNU General Public License v3
+# Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Check parameters of the service "Service Accounts"."""
+"""Check parameters of the service "Windows Service Accounts"."""
 
 from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
@@ -59,7 +59,8 @@ def _allow_entry() -> Dictionary:
                         "Regular expression that has to match the whole name of the Windows "
                         "service, ignoring case. This is the internal service name (e.g. "
                         "<tt>MSSQLSERVER</tt>), not the display name; the details of the "
-                        "service <i>Service Accounts</i> show it at the start of each line. "
+                        "service <i>Windows Service Accounts</i> show it at the start of each "
+                        "line. "
                         "Several services: <tt>MSSQLSERVER|SQLSERVERAGENT</tt>, all "
                         "instances: <tt>MSSQL\\$.*</tt>. Without this setting the account "
                         "is allowed for every service of the host."
@@ -80,7 +81,7 @@ def _parameter_form() -> Dictionary:
         # The baseline the service discovery stores next to the rule parameters.
         ignored_elements=("discovered_services",),
         help_text=Help(
-            "The service <i>Service Accounts</i> shows which Windows services run under a "
+            "The service <i>Windows Service Accounts</i> shows which Windows services run under a "
             "service account. By default it is WARN for every service whose account is not "
             "on the allow list of this rule."
         ),

@@ -1,4 +1,4 @@
-# Copyright (C) 2026 chexma - License: GNU General Public License v3
+# Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
@@ -220,6 +220,10 @@ def test_check_without_rule_is_ok_and_counts(section) -> None:
     assert Metric("service_account_services", 5) in results
     assert Metric("service_account_accounts", 4) in results
     assert all(r.state is State.OK for r in results if isinstance(r, Result))
+
+
+def test_service_name() -> None:
+    assert sa.check_plugin_service_accounts.service_name == "Windows Service Accounts"
 
 
 def test_default_is_warn_for_accounts_that_are_not_allowed(section) -> None:

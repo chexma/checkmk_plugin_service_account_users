@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 chexma - License: GNU General Public License v3
+# Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Metrics, graph and perfometer of the service "Service Accounts"."""
+"""Metrics, graph and perfometer of the service "Windows Service Accounts"."""
 
 from cmk.graphing.v1 import Title
 from cmk.graphing.v1.graphs import Graph, MinimalRange

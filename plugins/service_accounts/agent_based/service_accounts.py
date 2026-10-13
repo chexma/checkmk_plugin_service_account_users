@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026 chexma - License: GNU General Public License v3
+# Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
@@ -482,7 +482,7 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
 
 check_plugin_service_accounts = CheckPlugin(
     name="service_accounts",
-    service_name="Service Accounts",
+    service_name="Windows Service Accounts",
     discovery_function=discover_service_accounts,
     check_function=check_service_accounts,
     # Service accounts have to be allowed explicitly; a rule can set the state to OK.

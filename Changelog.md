@@ -5,6 +5,12 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-10-13
+
+- The service is now called `Windows Service Accounts` (was `Service
+  Accounts`): run the service discovery on the hosts after the update.
+- Manifest: author and download URL.
+
 ## [2.5.3] - 2026-10-13
 
 - Allow list entries have a service pattern and an account pattern: an

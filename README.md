@@ -6,13 +6,14 @@ service account: a domain account, a local user or a managed service account.
 Optionally alerts on accounts that are not allowed, on unwanted accounts and
 on changes since the service discovery.
 
-- One service `Service Accounts` per Windows host
+- One service `Windows Service Accounts` per Windows host
 - HW/SW inventory table with a view to search an account across all hosts
 - Agent plugin `service_accounts.ps1`, deployed with the agent bakery
 
 Status: the server side is tested (pytest, Checkmk 2.5.0p15 site with canned
-agent output). The PowerShell agent plugin has not been run on real Windows
-hosts yet.
+agent output). The PowerShell agent plugin has run on one German Windows
+server so far; domain accounts, deleted accounts and domain controllers are
+not verified on real hosts yet.
 
 ## Requirements
 
@@ -45,7 +46,7 @@ mkp enable service_accounts <version>
    domain is not reachable.
 2. Bake and deploy the agents.
 3. Run the service discovery on the hosts. Each host gets the service
-   `Service Accounts`.
+   `Windows Service Accounts`.
 4. For the inventory table the HW/SW inventory has to be enabled for the hosts
    (rule *Do HW/SW inventory*).
 
