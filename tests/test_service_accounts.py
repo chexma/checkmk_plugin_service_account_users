@@ -342,3 +342,129 @@ def test_invalid_pattern_is_reported_and_does_not_crash(section) -> None:
         "Invalid pattern in rule: 'CONTOSO\\\\\\\\(svc'": State.UNKNOWN,
         "Invalid pattern in rule: '['": State.UNKNOWN,
     }
+
+
+# --- check: changes since the discovery -------------------------------------
+
+CHANGES = {"added": 1, "changed": 2, "removed": 3}
+
+
+def _with(*lines: str) -> sa.Section:
+    """STRING_TABLE with services replaced or added (by name).
+
+    A line is "name|display name|account|SID|start mode|state"."""
+    new = [["service", *line.split("|")] for line in lines]
+    names = {line[1] for line in new}
+    section = sa.parse_service_accounts(
+        [line for line in STRING_TABLE if line[0] != "service" or line[1] not in names] + new
+    )
+    assert section is not None
+    return section
+
+
+def _without(*names: str) -> sa.Section:
+    """STRING_TABLE without the named services."""
+    section = sa.parse_service_accounts([line for line in STRING_TABLE if line[1] not in names])
+    assert section is not None
+    return section
+
+
+def test_no_changes_no_findings(section) -> None:
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert _notices(params, section) == {}
+
+
+def test_changes_need_the_rule(section) -> None:
+    changed = _with("New|New|CONTOSO\\svc_new||Auto|Running")
+    assert _notices(_discovered(section), changed) == {}
+
+
+def test_changes_need_a_baseline(section) -> None:
+    assert _notices({"changes": CHANGES}, section) == {}
+
+
+def test_added_service(section) -> None:
+    changed = _with(
+        "New|New|CONTOSO\\svc_new||Auto|Running",
+        "NewSystem|New System|LocalSystem|S-1-5-18|Auto|Running",
+        "NewVirtual|New Virtual|NT SERVICE\\NewVirtual|S-1-5-80-9|Auto|Running",
+    )
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert _notices(params, changed) == {"New service New runs as CONTOSO\\svc_new": State.WARN}
+
+
+def test_added_service_under_an_allowed_account_is_not_reported(section) -> None:
+    changed = _with("New|New|CONTOSO\\svc_new||Auto|Running")
+    params = {"changes": CHANGES, "allowed": ["CONTOSO\\\\svc_.*"], **_discovered(section)}
+    assert _notices(params, changed) == {}
+
+
+def test_service_changed_from_local_system_counts_as_added(section) -> None:
+    changed = _with("Spooler|Print Spooler|CONTOSO\\svc_x||Auto|Running")
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert _notices(params, changed) == {"New service Spooler runs as CONTOSO\\svc_x": State.WARN}
+
+
+def test_changed_account(section) -> None:
+    changed = _with(
+        # service account -> other service account
+        f"MSSQLSERVER|SQL Server|CONTOSO\\svc_other|{DOMAIN_SID}-1200|Auto|Running",
+        # service account -> built-in
+        "WebApp|Web App|LocalSystem|S-1-5-18|Auto|Running",
+        # built-in -> service account
+        f"Dhcp|DHCP Client|CONTOSO\\svc_dhcp|{DOMAIN_SID}-1201|Auto|Running",
+        # built-in -> built-in: not reported
+        "Dnscache|DNS Client|NT AUTHORITY\\LocalService|S-1-5-19|Auto|Running",
+    )
+    params = {"changes": CHANGES, **_discovered(section)}
+    prefix = "Account of service"
+    assert _notices(params, changed) == {
+        f"{prefix} Dhcp changed from NT AUTHORITY\\LocalService to CONTOSO\\svc_dhcp": State.CRIT,
+        f"{prefix} MSSQLSERVER changed from CONTOSO\\svc_sql to CONTOSO\\svc_other": State.CRIT,
+        f"{prefix} WebApp changed from CONTOSO\\gmsa_web$ to LocalSystem": State.CRIT,
+    }
+
+
+def test_unresolved_sid_is_not_a_change(section) -> None:
+    params = {"changes": CHANGES, **_discovered(section)}
+    # Domain not reachable: same name, the SID could not be translated this time.
+    assert _notices(params, _with("MSSQLSERVER|SQL Server|contoso\\SVC_SQL||Auto|Running")) == {}
+    # The other way round: the baseline has no SID, now there is one.
+    changed = _with(f"Legacy|Legacy App|CONTOSO\\old_admin|{DOMAIN_SID}-1300|Auto|Stopped")
+    assert _notices(params, changed) == {}
+
+
+def test_renamed_account_with_the_same_sid_is_not_a_change(section) -> None:
+    changed = _with(f"WebApp|Web App|CONTOSO\\gmsa_web2$|{DOMAIN_SID}-1106|Auto|Running")
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert _notices(params, changed) == {}
+
+
+def test_removed_service(section) -> None:
+    params = {"changes": CHANGES, **_discovered(section)}
+    # Dhcp ran under a built-in account: its removal is not reported.
+    assert _notices(params, _without("Legacy", "Dhcp")) == {
+        "Service Legacy (CONTOSO\\old_admin) no longer exists": State.UNKNOWN
+    }
+
+
+def test_only_configured_changes_are_reported(section) -> None:
+    table = [line for line in STRING_TABLE if line[1] != "Legacy"]
+    table.append("service|New|New|CONTOSO\\svc_new||Auto|Running".split("|"))
+    params = {"changes": {"removed": 1}, **_discovered(section)}
+    assert _notices(params, sa.parse_service_accounts(table)) == {
+        "Service Legacy (CONTOSO\\old_admin) no longer exists": State.WARN
+    }
+
+
+def test_ignore_disabled_skips_changes_of_disabled_services(section) -> None:
+    changed = _with("Backup|Backup Service|CONTOSO\\svc_x||Disabled|Stopped")
+    params = {"changes": CHANGES, "ignore_disabled": True, **_discovered(section)}
+    assert _notices(params, changed) == {}
+    assert len(_notices({**params, "ignore_disabled": False}, changed)) == 1
+
+
+def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
+    broken = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID], ["error", "boom"]])
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]

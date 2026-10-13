@@ -9,7 +9,7 @@ Section <<<service_accounts:sep(124)>>> (agent plugin service_accounts.ps1):
 """
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -236,6 +236,55 @@ def matches_any(patterns: Iterable[re.Pattern[str]], candidates: Iterable[str]) 
     return any(p.fullmatch(c) for p in patterns for c in candidates)
 
 
+def same_account(account_a: str, sid_a: str, account_b: str, sid_b: str) -> bool:
+    """Compare by SID only if both sides have one: a SID that could not be
+    resolved this time (domain not reachable) must not look like a change."""
+    if sid_a and sid_b:
+        return sid_a.upper() == sid_b.upper()
+    return account_a.lower() == account_b.lower()
+
+
+def _check_changes(
+    changes: Mapping[str, int],
+    discovered: Mapping[str, Mapping[str, str]],
+    section: Section,
+    evaluated: Sequence[WinService],
+    is_relevant: Callable[[str, str], bool],
+) -> CheckResult:
+    """Compare the services with the ones remembered by the service discovery."""
+    for service in sorted(evaluated, key=lambda s: s.name.lower()):
+        old = discovered.get(service.name)
+        new_relevant = is_relevant(service.account, service.sid)
+        if old is None:
+            # Not in the baseline: the service is new or ran as LocalSystem.
+            if new_relevant and "added" in changes:
+                yield Result(
+                    state=State(changes["added"]),
+                    notice=f"New service {service.name} runs as {_display(service.account)}",
+                )
+            continue
+        if same_account(old["account"], old["sid"], service.account, service.sid):
+            continue
+        if (new_relevant or is_relevant(old["account"], old["sid"])) and "changed" in changes:
+            yield Result(
+                state=State(changes["changed"]),
+                notice=(
+                    f"Account of service {service.name} changed from "
+                    f"{_display(old['account'])} to {_display(service.account)}"
+                ),
+            )
+
+    if "removed" not in changes:
+        return
+    existing = {s.name for s in section.services}
+    for name, old in sorted(discovered.items()):
+        if name not in existing and is_relevant(old["account"], old["sid"]):
+            yield Result(
+                state=State(changes["removed"]),
+                notice=f"Service {name} ({_display(old['account'])}) no longer exists",
+            )
+
+
 def check_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
     if section.error is not None:
         yield Result(
@@ -304,6 +353,19 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
                 + (f"{', '.join(findings)} ({text})" if findings else text)
             ),
             details=_account_details(account),
+        )
+
+    changes = params.get("changes")
+    discovered = params.get("discovered_services")
+    if changes and discovered is not None and section.error is None:
+        yield from _check_changes(
+            changes,
+            discovered,
+            section,
+            evaluated,
+            lambda account, sid: (
+                kind_of(account, sid) not in builtin_kinds and not is_allowed(account, sid)
+            ),
         )
 
 
