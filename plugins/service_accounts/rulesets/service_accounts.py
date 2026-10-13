@@ -39,13 +39,50 @@ def _pattern(title: Title) -> RegularExpression:
     )
 
 
+def _migrate_allow_entry(value: object) -> dict[str, object]:
+    # Up to 2.5.2 an entry was a plain account pattern.
+    if isinstance(value, str):
+        return {"account": value}
+    if isinstance(value, dict):
+        return value
+    raise TypeError(value)
+
+
+def _allow_entry() -> Dictionary:
+    return Dictionary(
+        migrate=_migrate_allow_entry,
+        elements={
+            "service": DictElement(
+                parameter_form=RegularExpression(
+                    title=Title("Only for these services"),
+                    help_text=Help(
+                        "Regular expression that has to match the whole name of the Windows "
+                        "service, ignoring case. This is the internal service name (e.g. "
+                        "<tt>MSSQLSERVER</tt>), not the display name; the details of the "
+                        "service <i>Service Accounts</i> show it at the start of each line. "
+                        "Several services: <tt>MSSQLSERVER|SQLSERVERAGENT</tt>, all "
+                        "instances: <tt>MSSQL\\$.*</tt>. Without this setting the account "
+                        "is allowed for every service of the host."
+                    ),
+                    predefined_help_text=MatchingScope.FULL,
+                ),
+            ),
+            "account": DictElement(
+                required=True,
+                parameter_form=_pattern(Title("Account")),
+            ),
+        },
+    )
+
+
 def _parameter_form() -> Dictionary:
     return Dictionary(
         # The baseline the service discovery stores next to the rule parameters.
         ignored_elements=("discovered_services",),
         help_text=Help(
-            "Without a rule the service <i>Service Accounts</i> is always OK and only shows "
-            "which Windows services run under a service account."
+            "The service <i>Service Accounts</i> shows which Windows services run under a "
+            "service account. By default it is WARN for every service whose account is not "
+            "on the allow list of this rule."
         ),
         elements={
             "builtin_kinds": DictElement(
@@ -101,12 +138,14 @@ def _parameter_form() -> Dictionary:
                 parameter_form=List(
                     title=Title("Allowed accounts"),
                     help_text=Help(
-                        "Accounts matching one of these patterns are always OK and exempt "
-                        "from the other settings. In a more specific rule this list replaces "
-                        "the list of a more general rule."
+                        "Which account may run which services. A service whose account "
+                        "matches an entry is OK and exempt from the other settings. An "
+                        "entry without services allows the account for every service of "
+                        "the host. In a more specific rule this list replaces the list of a "
+                        "more general rule."
                     ),
-                    element_template=_pattern(Title("Pattern")),
-                    add_element_label=Label("Add pattern"),
+                    element_template=_allow_entry(),
+                    add_element_label=Label("Add account"),
                     editable_order=False,
                 ),
             ),
@@ -118,8 +157,8 @@ def _parameter_form() -> Dictionary:
                         "more general rule instead of replacing it. Use it for host specific "
                         "exceptions."
                     ),
-                    element_template=_pattern(Title("Pattern")),
-                    add_element_label=Label("Add pattern"),
+                    element_template=_allow_entry(),
+                    add_element_label=Label("Add account"),
                     editable_order=False,
                 ),
             ),
@@ -127,8 +166,8 @@ def _parameter_form() -> Dictionary:
                 parameter_form=ServiceState(
                     title=Title("State for accounts that are not allowed"),
                     help_text=Help(
-                        "State for every reported account that is not on the allow list. "
-                        "Without this setting such accounts are only shown."
+                        "State for every service whose account is not on the allow list, "
+                        "by default WARN. Set it to OK to only show the accounts."
                     ),
                     prefill=DefaultValue(ServiceState.WARN),
                 ),
@@ -138,8 +177,8 @@ def _parameter_form() -> Dictionary:
                     title=Title("Unwanted accounts"),
                     help_text=Help(
                         "Accounts that must not run services, e.g. personal or administrator "
-                        "accounts. The first matching entry determines the state. Accounts on "
-                        "the allow list are not checked."
+                        "accounts. The first matching entry determines the state. An account "
+                        "is not checked if all its services are on the allow list."
                     ),
                     element_template=Dictionary(
                         elements={

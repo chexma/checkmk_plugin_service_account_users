@@ -213,20 +213,18 @@ def _group_accounts(section: Section, services: Iterable[WinService]) -> dict[st
     return accounts
 
 
-def _account_details(account: _Account, findings: Sequence[str] = ()) -> str:
-    properties = [KIND_TITLES[account.kind]]
-    if account.sid:
-        properties.append(account.sid)
-    if account.other_names:
-        properties.append(f"also {', '.join(account.other_names)}")
-    head = f"{_display(account.name)} ({', '.join(properties)})"
-    if findings:
-        head += f": {', '.join(findings)}"
-    lines = [head] + [
-        f"  {s.name} ({s.display_name}): {s.start_mode}, {s.state}"
+def _account_details(
+    account: _Account, findings: Sequence[str] = (), affected: Iterable[WinService] = ()
+) -> str:
+    """One line per service of the account, the findings behind the affected ones."""
+    suffix = f": {', '.join(findings)}" if findings else ""
+    affected_names = {s.name for s in affected}
+    return "\n".join(
+        f"{s.name}{f' ({s.display_name})' if s.display_name else ''}: "
+        f"{_display(s.account)} ({KIND_TITLES[account.kind]}), {s.start_mode}, {s.state}"
+        + (suffix if s.name in affected_names else "")
         for s in sorted(account.services, key=lambda s: s.name.lower())
-    ]
-    return "\n".join(lines)
+    )
 
 
 def _display(account: str) -> str:
@@ -304,7 +302,7 @@ def _changes(
     discovered: Mapping[str, Mapping[str, str]],
     section: Section,
     evaluated: Sequence[WinService],
-    is_relevant: Callable[[str, str], bool],
+    is_relevant: Callable[[str, str, str], bool],
 ) -> Iterable[_Finding]:
     """Compare the services with the ones remembered by the service discovery."""
     for service in sorted(evaluated, key=lambda s: s.name.lower()):
@@ -312,7 +310,7 @@ def _changes(
             # Not part of the baseline, see discover_service_accounts.
             continue
         old = discovered.get(service.name)
-        new_relevant = is_relevant(service.account, service.sid)
+        new_relevant = is_relevant(service.name, service.account, service.sid)
         if old is None:
             if new_relevant and "added" in changes:
                 text = f"New service {service.name} runs as {_display(service.account)}"
@@ -320,7 +318,8 @@ def _changes(
             continue
         if same_account(old["account"], old["sid"], service.account, service.sid):
             continue
-        if (new_relevant or is_relevant(old["account"], old["sid"])) and "changed" in changes:
+        old_relevant = is_relevant(service.name, old["account"], old["sid"])
+        if (new_relevant or old_relevant) and "changed" in changes:
             old_name, new_name = _display(old["account"]), _display(service.account)
             if old_name.lower() == new_name.lower():
                 # The account was deleted and created again: only the SID tells.
@@ -333,7 +332,7 @@ def _changes(
         return
     existing = {s.name for s in section.services}
     for name, old in sorted(discovered.items()):
-        if name not in existing and is_relevant(old["account"], old["sid"]):
+        if name not in existing and is_relevant(name, old["account"], old["sid"]):
             text = f"Service {name} ({_display(old['account'])}) no longer exists"
             yield State(changes["removed"]), text, text
 
@@ -349,13 +348,9 @@ def _report(findings: Iterable[_Finding]) -> CheckResult:
             state=State.worst(*(state for state, _text, _details in rest)),
             summary=f"{_plural(len(rest), 'more finding')} (see details)",
             details="\n".join(
-                # The marker goes to the first line: account details have several.
-                (
-                    details.replace("\n", f"{_STATE_MARKERS[state]}\n", 1)
-                    if "\n" in details
-                    else details + _STATE_MARKERS[state]
-                )
+                line + _STATE_MARKERS[state]
                 for state, _text, details in rest
+                for line in details.splitlines()
             ),
         )
     for state, text, details in ordered[len(not_ok) :]:
@@ -400,14 +395,26 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
     yield Metric("service_account_services", len(reported))
     yield Metric("service_account_accounts", len(accounts))
 
-    allowed, invalid = compile_patterns(
-        [*params.get("allowed", []), *params.get("allowed_additional", [])], computer
-    )
-    forbidden = []
-    for entry in params.get("forbidden", []):
-        compiled, bad = compile_patterns([entry["pattern"]], computer)
-        invalid += bad
-        forbidden += [(pattern, State(entry["state"])) for pattern in compiled]
+    invalid: list[str] = []
+
+    def compiled(pattern: str) -> list[re.Pattern[str]]:
+        patterns, bad = compile_patterns([pattern], computer)
+        invalid.extend(bad)
+        return patterns
+
+    # (service pattern or None for every service, account pattern)
+    allowed: list[tuple[re.Pattern[str] | None, re.Pattern[str]]] = []
+    for entry in [*params.get("allowed", []), *params.get("allowed_additional", [])]:
+        if isinstance(entry, str):
+            # Rules saved before 2.5.3 hold plain account patterns.
+            entry = {"account": entry}
+        service_patterns = compiled(entry["service"]) if entry.get("service") else [None]
+        allowed += [(sp, ap) for sp in service_patterns for ap in compiled(entry["account"])]
+    forbidden = [
+        (pattern, State(entry["state"]))
+        for entry in params.get("forbidden", [])
+        for pattern in compiled(entry["pattern"])
+    ]
     for pattern in invalid:
         yield Result(state=State.UNKNOWN, summary=f"Invalid pattern in rule: {pattern}")
 
@@ -417,8 +424,12 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
         )
         return [c for name in names for c in match_candidates(name, sid, computer)]
 
-    def is_allowed(account: str, sid: str) -> bool:
-        return matches_any(allowed, candidates_of([account], sid))
+    def is_allowed(service_name: str, candidates: Sequence[str]) -> bool:
+        return any(
+            (service_pattern is None or service_pattern.fullmatch(service_name))
+            and matches_any([account_pattern], candidates)
+            for service_pattern, account_pattern in allowed
+        )
 
     findings: list[_Finding] = []
     not_allowed_state = params.get("not_allowed_state")
@@ -426,7 +437,8 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
         state = State.OK
         reasons = []
         candidates = candidates_of(account.names, account.sid)
-        if not matches_any(allowed, candidates):
+        denied = [s for s in account.services if not is_allowed(s.name, candidates)]
+        if denied:
             for pattern, forbidden_state in forbidden:
                 if matches_any([pattern], candidates):
                     state = forbidden_state
@@ -436,12 +448,14 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
                 state = State.worst(state, State(not_allowed_state))
                 reasons.append("not on the allow list")
         text = _plural(len(account.services), "service")
+        if reasons and len(denied) < len(account.services):
+            text = f"{len(denied)} of {text}"
         findings.append(
             (
                 state,
                 f"{_display(account.name)}: "
                 + (f"{', '.join(reasons)} ({text})" if reasons else text),
-                _account_details(account, reasons),
+                _account_details(account, reasons, denied),
             )
         )
 
@@ -458,8 +472,9 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
                 discovered,
                 section,
                 evaluated,
-                lambda account, sid: (
-                    kind_of(account, sid) not in builtin_kinds and not is_allowed(account, sid)
+                lambda service_name, account, sid: (
+                    kind_of(account, sid) not in builtin_kinds
+                    and not is_allowed(service_name, candidates_of([account], sid))
                 ),
             )
     yield from _report(findings)
@@ -470,7 +485,8 @@ check_plugin_service_accounts = CheckPlugin(
     service_name="Service Accounts",
     discovery_function=discover_service_accounts,
     check_function=check_service_accounts,
-    check_default_parameters={},
+    # Service accounts have to be allowed explicitly; a rule can set the state to OK.
+    check_default_parameters={"not_allowed_state": 1},
     check_ruleset_name="service_accounts",
 )
 

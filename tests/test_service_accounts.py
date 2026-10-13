@@ -222,14 +222,23 @@ def test_check_without_rule_is_ok_and_counts(section) -> None:
     assert all(r.state is State.OK for r in results if isinstance(r, Result))
 
 
-def test_check_details_list_services_per_account(section) -> None:
+def test_default_is_warn_for_accounts_that_are_not_allowed(section) -> None:
+    # Checkmk passes these parameters if no rule matches.
+    defaults = sa.check_plugin_service_accounts.check_default_parameters
+    assert defaults == {"not_allowed_state": 1}
+    assert set(_notices(defaults, section).values()) == {State.WARN}
+    assert len(_notices(defaults, section)) == 4
+    # A rule can switch it off again.
+    assert _notices({**defaults, "not_allowed_state": 0}, section) == {}
+
+
+def test_check_details_have_one_line_per_service(section) -> None:
     details = [r.details for r in _results({}, section)]
     assert (
-        f"CONTOSO\\svc_sql (domain account, {DOMAIN_SID}-1105)\n"
-        "  MSSQLSERVER (SQL Server): Auto, Running\n"
-        "  SQLAgent (SQL Server Agent): Manual, Stopped"
+        "MSSQLSERVER (SQL Server): CONTOSO\\svc_sql (domain account), Auto, Running\n"
+        "SQLAgent (SQL Server Agent): CONTOSO\\svc_sql (domain account), Manual, Stopped"
     ) in details
-    assert "CONTOSO\\old_admin (domain account)\n  Legacy (Legacy App): Auto, Stopped" in details
+    assert "Legacy (Legacy App): CONTOSO\\old_admin (domain account), Auto, Stopped" in details
 
 
 def test_check_singular() -> None:
@@ -372,6 +381,64 @@ def test_invalid_pattern_is_reported_and_does_not_crash(section) -> None:
     }
 
 
+def test_allow_entry_for_a_service_applies_to_that_service_only(section) -> None:
+    # CONTOSO\svc_sql may run MSSQLSERVER, but it also runs SQLAgent.
+    params = {
+        "not_allowed_state": 1,
+        "allowed": [
+            {"service": "mssqlserver", "account": "CONTOSO\\\\svc_sql"},
+            {"account": "CONTOSO\\\\(gmsa_web\\$|old_admin)"},
+            {"service": "Backup", "account": "$HOSTNAME$\\\\backup"},
+        ],
+    }
+    assert _notices(params, section) == {
+        "CONTOSO\\svc_sql: not on the allow list (1 of 2 services)": State.WARN,
+    }
+    details = [r.details for r in _results(params, section)]
+    assert (
+        "MSSQLSERVER (SQL Server): CONTOSO\\svc_sql (domain account), Auto, Running\n"
+        "SQLAgent (SQL Server Agent): CONTOSO\\svc_sql (domain account), Manual, Stopped: "
+        "not on the allow list"
+    ) in details
+
+
+def test_allow_entry_service_pattern_matches_the_whole_name(section) -> None:
+    params = {
+        "not_allowed_state": 1,
+        "allowed": [{"service": "SQL", "account": "CONTOSO\\\\svc_sql"}],
+    }
+    assert "CONTOSO\\svc_sql: not on the allow list (2 services)" in _notices(params, section)
+    params["allowed"] = [{"service": ".*SQL.*", "account": "CONTOSO\\\\svc_sql"}]
+    assert not [n for n in _notices(params, section) if "svc_sql" in n]
+
+
+def test_allow_entries_of_both_lists_and_of_the_old_format_are_combined(section) -> None:
+    # Rules saved before 2.5.3 hold plain account patterns.
+    params = {
+        "not_allowed_state": 1,
+        "allowed": ["CONTOSO\\\\gmsa_web\\$", {"service": "", "account": "CONTOSO\\\\old_admin"}],
+        "allowed_additional": [{"service": "MSSQLSERVER|SQLAgent", "account": ".*svc_sql"}],
+    }
+    assert set(_notices(params, section)) == {".\\backup: not on the allow list (1 service)"}
+
+
+def test_unwanted_account_is_checked_if_one_of_its_services_is_not_allowed(section) -> None:
+    params = {
+        "allowed": [{"service": "MSSQLSERVER", "account": "CONTOSO\\\\svc_sql"}],
+        "forbidden": [{"pattern": ".*svc_sql", "state": 2}],
+    }
+    assert _notices(params, section) == {
+        "CONTOSO\\svc_sql: unwanted account (1 of 2 services)": State.CRIT
+    }
+    params["allowed"] = [{"service": "MSSQLSERVER|SQLAgent", "account": "CONTOSO\\\\svc_sql"}]
+    assert _notices(params, section) == {}
+
+
+def test_invalid_service_pattern_is_reported(section) -> None:
+    params = {"allowed": [{"service": "(", "account": ".*"}]}
+    assert _notices(params, section) == {"Invalid pattern in rule: (": State.UNKNOWN}
+
+
 def test_account_with_two_spellings_is_matched_under_each_of_them() -> None:
     section = sa.parse_service_accounts(
         _table(
@@ -382,7 +449,10 @@ def test_account_with_two_spellings_is_matched_under_each_of_them() -> None:
     )
     params = {"not_allowed_state": 2, "allowed": ["CONTOSO\\\\svc_.*"]}
     assert _notices(params, section) == {}
-    assert "also CONTOSO\\svc_sql" in _results(params, section)[1].details
+    assert _results(params, section)[1].details == (
+        "A (A): svc_sql@contoso.example (domain account), Auto, Running\n"
+        "B (B): CONTOSO\\svc_sql (domain account), Auto, Running"
+    )
 
 
 def test_sid_pattern_uses_the_baseline_sid_if_the_translation_failed(section) -> None:
@@ -401,8 +471,8 @@ def test_details_name_the_reason(section) -> None:
     params = {"not_allowed_state": 1, "forbidden": [{"pattern": ".*admin.*", "state": 2}]}
     details = [r.details for r in _results(params, section)]
     assert (
-        "CONTOSO\\old_admin (domain account): unwanted account, not on the allow list\n"
-        "  Legacy (Legacy App): Auto, Stopped"
+        "Legacy (Legacy App): CONTOSO\\old_admin (domain account), Auto, Stopped: "
+        "unwanted account, not on the allow list"
     ) in details
 
 
@@ -423,12 +493,12 @@ def test_summary_names_at_most_ten_findings(section) -> None:
     assert not_ok[10].state is State.WARN
     assert not_ok[10].summary == "3 more findings (see details)"
     assert not_ok[10].details == (
-        "CONTOSO\\svc_app10 (domain account): not on the allow list(!)\n"
-        "  App10 (App 10): Auto, Running\n"
-        "CONTOSO\\svc_app11 (domain account): not on the allow list(!)\n"
-        "  App11 (App 11): Auto, Running\n"
-        "CONTOSO\\svc_app12 (domain account): not on the allow list(!)\n"
-        "  App12 (App 12): Auto, Running"
+        "App10 (App 10): CONTOSO\\svc_app10 (domain account), Auto, Running: "
+        "not on the allow list(!)\n"
+        "App11 (App 11): CONTOSO\\svc_app11 (domain account), Auto, Running: "
+        "not on the allow list(!)\n"
+        "App12 (App 12): CONTOSO\\svc_app12 (domain account), Auto, Running: "
+        "not on the allow list(!)"
     )
 
 
@@ -583,6 +653,17 @@ def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
     assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]
 
 
+def test_change_to_an_account_allowed_for_another_service_only_is_reported(section) -> None:
+    allowed = [{"service": "MSSQLSERVER|SQLAgent", "account": "CONTOSO\\\\svc_sql"}]
+    params = {"changes": CHANGES, "allowed": allowed, **_discovered(section)}
+    changed = _with(f"Spooler|Print Spooler|CONTOSO\\svc_sql|{DOMAIN_SID}-1105|Auto|Running")
+    assert _notices(params, changed) == {
+        "Account of service Spooler changed from LocalSystem to CONTOSO\\svc_sql": State.CRIT
+    }
+    params["allowed"] = [{"account": "CONTOSO\\\\svc_sql"}]
+    assert _notices(params, changed) == {}
+
+
 def test_changes_without_a_baseline_are_announced(section) -> None:
     summaries = [r.summary for r in _results({"changes": CHANGES}, section)]
     assert "No change detection: no baseline, run the service discovery" in summaries
@@ -666,6 +747,25 @@ def test_check_rule_form_builds() -> None:
     )
     kinds = {e.name for e in form.elements["builtin_kinds"].parameter_form.elements}
     assert kinds == set(sa.KIND_TITLES)
+
+
+def test_allow_list_entries_have_service_and_account_and_migrate_old_rules() -> None:
+    form = rules.rule_spec_service_accounts.parameter_form()
+    for name in ("allowed", "allowed_additional"):
+        entry = form.elements[name].parameter_form.element_template
+        assert list(entry.elements) == ["service", "account"]
+        assert not entry.elements["service"].required
+        assert entry.elements["account"].required
+        assert entry.migrate("CONTOSO\\\\svc_.*") == {"account": "CONTOSO\\\\svc_.*"}
+        assert entry.migrate({"service": "A", "account": "B"}) == {"service": "A", "account": "B"}
+
+
+def test_check_rule_form_prefills_the_default_state() -> None:
+    form = rules.rule_spec_service_accounts.parameter_form()
+    defaults = sa.check_plugin_service_accounts.check_default_parameters
+    assert form.elements["not_allowed_state"].parameter_form.prefill.value == (
+        defaults["not_allowed_state"]
+    )
 
 
 def test_check_rule_form_ignores_the_discovered_baseline() -> None:

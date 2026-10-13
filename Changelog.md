@@ -5,6 +5,17 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-10-13
+
+- Allow list entries have a service pattern and an account pattern: an
+  account can be allowed for certain services only. Existing rules keep
+  working (entries without service).
+- Default changed: without a rule, accounts that are not on the allow list
+  are WARN (was OK). Set the state to OK in the rule to only show them.
+- Details: one line per service with its account instead of one block per
+  account.
+- License headers in the source files.
+
 ## [2.5.2] - 2026-10-13
 
 - License is GPLv3 (`LICENSE`, man page); README for the plugin.

@@ -214,6 +214,17 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
   are tried against all of them.
 - If an account has no SID in the current data, patterns are also tried
   against the SID remembered for that account name by the service discovery.
+- The details have one line per service (`<service> (<display name>):
+  <account> (<kind>), <start mode>, <state>[: <reason>]`) instead of one
+  block per account; the SID is no longer shown there (user request).
+- Allow list entries are `{"service": <regex, optional>, "account": <regex>}`
+  (user request): an account is allowed per service; without `service` for
+  every service. An account is evaluated per service, the summary names
+  "1 of 2 services". Plain account patterns of older rules are migrated and
+  still understood by the check.
+- `not_allowed_state` defaults to WARN (user request): without a rule the
+  service is WARN for every reported account. This replaces "Without a rule
+  the service is always OK".
 - With `changes` configured but no baseline, the summary says so.
 - A changed account with an unchanged name (deleted and created again) is
   reported with both SIDs.

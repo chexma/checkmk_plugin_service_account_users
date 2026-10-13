@@ -49,7 +49,8 @@ mkp enable service_accounts <version>
 4. For the inventory table the HW/SW inventory has to be enabled for the hosts
    (rule *Do HW/SW inventory*).
 
-Without a rule for the service it is always OK and only shows the accounts.
+Without a rule the service is WARN for every service that runs under a
+service account: accounts have to be allowed explicitly (see the rule below).
 
 ## Service
 
@@ -59,12 +60,13 @@ Summary, for example:
 5 services under 4 service accounts, CONTOSO\old_admin: not on the allow list (1 service)(!)
 ```
 
-The details list every account with its kind, SID and services:
+The details have one line per service with its account, the kind of the
+account, start mode and state, and the reason if the account is not OK:
 
 ```text
-CONTOSO\svc_sql (domain account, S-1-5-21-4000-5000-6000-1105)
-  MSSQLSERVER (SQL Server): Auto, Running
-  SQLAgent (SQL Server Agent): Manual, Stopped
+Legacy (Legacy App): CONTOSO\old_admin (domain account), Auto, Stopped: not on the allow list
+MSSQLSERVER (SQL Server): CONTOSO\svc_sql (domain account), Auto, Running
+SQLAgent (SQL Server Agent): CONTOSO\svc_sql (domain account), Manual, Stopped
 ```
 
 At most 10 findings are named in the summary, the worst first; further ones
@@ -101,9 +103,9 @@ the SID, this works independently of the language of the operating system.
 |---|---|
 | Built-in accounts | Which kinds are unremarkable and not reported |
 | Disabled services | Ignore services with the start mode Disabled (by default they are evaluated: Windows keeps their credentials) |
-| Allowed accounts | Patterns for accounts that are always OK and exempt from the other settings |
+| Allowed accounts | Which account may run which services: a pattern for the account and optionally one for the service names. Without services the account is allowed for every service of the host. Allowed combinations are OK and exempt from the other settings |
 | Additional allowed accounts | Like the allow list, but added to the list of a more general rule instead of replacing it |
-| State for accounts that are not allowed | State for every reported account that is not on the allow list |
+| State for accounts that are not allowed | State for every service whose account is not on the allow list. Default WARN; set it to OK to only show the accounts |
 | Unwanted accounts | Patterns with a state, e.g. for personal or administrator accounts; the first matching entry counts |
 | Changes since the service discovery | States for added services, changed accounts and removed services |
 | State if the agent plugin reported an error | Default UNKNOWN |
@@ -113,6 +115,9 @@ ignoring case. They are tried against the account name as configured in the
 service and against its SID:
 
 - A backslash is written as `\\`: `CONTOSO\\svc_.*`
+- The service pattern of an allow list entry is matched against the internal
+  service name (the first word of each details line), not the display name:
+  `MSSQLSERVER|SQLSERVERAGENT`, or `MSSQL\$.*` for all instances.
 - `$HOSTNAME$` is replaced by the computer name: `$HOSTNAME$\\backup` matches
   the local user `backup` on every host, also if the service is configured
   with `.\backup`.
