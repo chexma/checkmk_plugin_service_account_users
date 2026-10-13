@@ -8,10 +8,21 @@ Section <<<service_accounts:sep(124)>>> (agent plugin service_accounts.ps1):
     error|<message>
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from cmk.agent_based.v2 import AgentSection, StringTable
+from cmk.agent_based.v2 import (
+    AgentSection,
+    CheckPlugin,
+    CheckResult,
+    DiscoveryResult,
+    Metric,
+    Result,
+    Service,
+    State,
+    StringTable,
+)
 
 
 @dataclass(frozen=True)
@@ -125,3 +136,118 @@ def classify(account: str, sid: str, computer: str, machine_sid: str) -> str:
     if "@" in account:
         return "domain"
     return "unknown"
+
+
+def account_key(account: str, sid: str) -> str:
+    """Identity of an account: the SID if known, else the lower-case name."""
+    return sid.upper() or account.lower()
+
+
+def discover_service_accounts(section: Section) -> DiscoveryResult:
+    if section.error is not None:
+        # No baseline from a failed query: the check skips the comparison then.
+        yield Service()
+        return
+    if not section.services:
+        return
+    yield Service(
+        parameters={
+            "discovered_services": {
+                s.name: {"account": s.account, "sid": s.sid}
+                for s in section.services
+                if classify(s.account, s.sid, section.computer, section.machine_sid)
+                != "local_system"
+            }
+        }
+    )
+
+
+@dataclass
+class _Account:
+    name: str
+    sid: str
+    kind: str
+    services: list[WinService]
+
+
+def _group_accounts(section: Section, services: Iterable[WinService]) -> dict[str, _Account]:
+    accounts: dict[str, _Account] = {}
+    for service in services:
+        key = account_key(service.account, service.sid)
+        if key not in accounts:
+            accounts[key] = _Account(
+                name=service.account,
+                sid=service.sid,
+                kind=classify(service.account, service.sid, section.computer, section.machine_sid),
+                services=[],
+            )
+        accounts[key].services.append(service)
+    return accounts
+
+
+def _account_details(account: _Account) -> str:
+    head = f"{_display(account.name)} ({KIND_TITLES[account.kind]}"
+    head += f", {account.sid})" if account.sid else ")"
+    lines = [head] + [
+        f"  {s.name} ({s.display_name}): {s.start_mode}, {s.state}"
+        for s in sorted(account.services, key=lambda s: s.name.lower())
+    ]
+    return "\n".join(lines)
+
+
+def _display(account: str) -> str:
+    return account or "(no account)"
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+def check_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
+    if section.error is not None:
+        yield Result(
+            state=State(params.get("query_error_state", 3)),
+            summary=f"Agent plugin reported an error: {section.error}",
+        )
+        if not section.services:
+            return
+
+    builtin_kinds = set(params.get("builtin_kinds", DEFAULT_BUILTIN_KINDS))
+    ignore_disabled = params.get("ignore_disabled", False)
+    computer = section.computer
+
+    def kind_of(account: str, sid: str) -> str:
+        return classify(account, sid, computer, section.machine_sid)
+
+    evaluated = [
+        s for s in section.services if not (ignore_disabled and s.start_mode.lower() == "disabled")
+    ]
+    reported = [s for s in evaluated if kind_of(s.account, s.sid) not in builtin_kinds]
+    accounts = _group_accounts(section, reported)
+
+    yield Result(
+        state=State.OK,
+        summary=(
+            f"{_plural(len(reported), 'service')} under "
+            f"{_plural(len(accounts), 'service account')}"
+        ),
+    )
+    yield Metric("service_account_services", len(reported))
+    yield Metric("service_account_accounts", len(accounts))
+
+    for account in sorted(accounts.values(), key=lambda a: a.name.lower()):
+        yield Result(
+            state=State.OK,
+            notice=f"{_display(account.name)}: {_plural(len(account.services), 'service')}",
+            details=_account_details(account),
+        )
+
+
+check_plugin_service_accounts = CheckPlugin(
+    name="service_accounts",
+    service_name="Service Accounts",
+    discovery_function=discover_service_accounts,
+    check_function=check_service_accounts,
+    check_default_parameters={},
+    check_ruleset_name="service_accounts",
+)

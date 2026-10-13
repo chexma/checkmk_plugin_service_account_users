@@ -1,6 +1,7 @@
 """Tests for the plugin family service_accounts. All names are fictional."""
 
 import pytest
+from cmk.agent_based.v2 import Metric, Result, Service, State
 from cmk_addons.plugins.service_accounts.agent_based import service_accounts as sa
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
@@ -34,6 +35,15 @@ def _section() -> sa.Section:
     section = sa.parse_service_accounts(STRING_TABLE)
     assert section is not None
     return section
+
+
+def _results(params, section) -> list[Result]:
+    return [r for r in sa.check_service_accounts(params, section) if isinstance(r, Result)]
+
+
+def _discovered(section) -> dict:
+    (service,) = sa.discover_service_accounts(section)
+    return dict(service.parameters)
 
 
 # --- parser -----------------------------------------------------------------
@@ -142,3 +152,93 @@ def test_classify_without_machine_sid_uses_the_name_for_local_users() -> None:
 def test_classify_machine_sid_is_not_a_string_prefix() -> None:
     # S-1-5-21-1000-2000-30001-500 belongs to another machine or domain
     assert sa.classify("CONTOSO\\x", MACHINE_SID + "1-500", "SRV-APP01", MACHINE_SID) == "domain"
+
+
+# --- discovery --------------------------------------------------------------
+
+
+def test_discovery_stores_all_services_not_running_as_local_system(section) -> None:
+    assert _discovered(section) == {
+        "discovered_services": {
+            "Dhcp": {"account": "NT AUTHORITY\\LocalService", "sid": "S-1-5-19"},
+            "Dnscache": {"account": "NT-AUTORITÄT\\Netzwerkdienst", "sid": "S-1-5-20"},
+            "MSSQL$X": {"account": "NT SERVICE\\MSSQL$X", "sid": "S-1-5-80-1-2-3-4-5"},
+            "MSSQLSERVER": {"account": "CONTOSO\\svc_sql", "sid": DOMAIN_SID + "-1105"},
+            "SQLAgent": {"account": "CONTOSO\\svc_sql", "sid": DOMAIN_SID + "-1105"},
+            "Backup": {"account": ".\\backup", "sid": MACHINE_SID + "-1001"},
+            "WebApp": {"account": "CONTOSO\\gmsa_web$", "sid": DOMAIN_SID + "-1106"},
+            "Legacy": {"account": "CONTOSO\\old_admin", "sid": ""},
+        }
+    }
+
+
+def test_discovery_on_error_has_no_baseline() -> None:
+    section = sa.parse_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
+    assert list(sa.discover_service_accounts(section)) == [Service()]
+
+
+def test_no_discovery_without_services_and_error() -> None:
+    section = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID]])
+    assert not list(sa.discover_service_accounts(section))
+
+
+# --- check: summary, metrics, details ---------------------------------------
+
+
+def test_check_without_rule_is_ok_and_counts(section) -> None:
+    results = list(sa.check_service_accounts({}, section))
+    assert results[0] == Result(state=State.OK, summary="5 services under 4 service accounts")
+    assert Metric("service_account_services", 5) in results
+    assert Metric("service_account_accounts", 4) in results
+    assert all(r.state is State.OK for r in results if isinstance(r, Result))
+
+
+def test_check_details_list_services_per_account(section) -> None:
+    details = [r.details for r in _results({}, section)]
+    assert (
+        f"CONTOSO\\svc_sql (domain account, {DOMAIN_SID}-1105)\n"
+        "  MSSQLSERVER (SQL Server): Auto, Running\n"
+        "  SQLAgent (SQL Server Agent): Manual, Stopped"
+    ) in details
+    assert "CONTOSO\\old_admin (domain account)\n  Legacy (Legacy App): Auto, Stopped" in details
+
+
+def test_check_singular() -> None:
+    section = sa.parse_service_accounts(
+        [
+            ["computer", "SRV-APP01", MACHINE_SID],
+            ["service", "A", "A", "CONTOSO\\svc_a", DOMAIN_SID + "-1", "Auto", "Running"],
+        ]
+    )
+    assert _results({}, section)[0].summary == "1 service under 1 service account"
+
+
+def test_check_same_account_with_and_without_sid_is_counted_by_key() -> None:
+    section = sa.parse_service_accounts(
+        [
+            ["computer", "SRV-APP01", MACHINE_SID],
+            ["service", "A", "A", "CONTOSO\\svc_a", DOMAIN_SID + "-1", "Auto", "Running"],
+            ["service", "B", "B", "contoso\\SVC_A", DOMAIN_SID + "-1", "Auto", "Running"],
+        ]
+    )
+    assert _results({}, section)[0].summary == "2 services under 1 service account"
+
+
+def test_builtin_kinds(section) -> None:
+    params = {"builtin_kinds": ["local_system", "domain", "managed", "local_user"]}
+    assert _results(params, section)[0].summary == "3 services under 3 service accounts"
+
+
+def test_ignore_disabled(section) -> None:
+    assert (
+        _results({"ignore_disabled": True}, section)[0].summary
+        == "4 services under 3 service accounts"
+    )
+
+
+def test_query_error_state() -> None:
+    section = sa.parse_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
+    assert list(sa.check_service_accounts({}, section)) == [
+        Result(state=State.UNKNOWN, summary="Agent plugin reported an error: boom")
+    ]
+    assert _results({"query_error_state": 2}, section)[0].state is State.CRIT
