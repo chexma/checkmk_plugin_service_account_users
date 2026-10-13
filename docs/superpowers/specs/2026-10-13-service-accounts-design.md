@@ -227,6 +227,12 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
   the service is always OK".
 - The service is called `Windows Service Accounts` (user request, was
   `Service Accounts`).
+- Inventory rule `service_accounts_inventory` with `all_services` (user
+  request): the table then lists every service, also under built-in kinds.
+  File `rulesets/inventory.py`.
+- The inventory table is `software > os > service_accounts`, titled
+  `Windows Service Accounts` (user request, was `software > applications >
+  service_accounts`).
 - With `changes` configured but no baseline, the summary says so.
 - A changed account with an unchanged name (deleted and created again) is
   reported with both SIDs.

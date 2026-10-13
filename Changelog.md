@@ -5,6 +5,14 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.5] - 2026-10-13
+
+- The inventory table moved to `Software > Operating system > Windows
+  Service Accounts` (was `Software > Applications > Service accounts`).
+- HW/SW inventory rule `Service accounts (Windows)`: optionally list every
+  Windows service in the inventory table, also the ones under built-in
+  accounts.
+
 ## [2.5.4] - 2026-10-13
 
 - The service is now called `Windows Service Accounts` (was `Service

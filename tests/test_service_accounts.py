@@ -13,6 +13,7 @@ from cmk_addons.plugins.service_accounts.bakery import service_accounts as baker
 from cmk_addons.plugins.service_accounts.graphing import service_accounts as graphing
 from cmk_addons.plugins.service_accounts.inventory_ui import service_accounts as inventory_ui
 from cmk_addons.plugins.service_accounts.rulesets import agent_config
+from cmk_addons.plugins.service_accounts.rulesets import inventory as inventory_rules
 from cmk_addons.plugins.service_accounts.rulesets import service_accounts as rules
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
@@ -697,8 +698,31 @@ def test_malformed_baseline_does_not_crash(section) -> None:
 # --- inventory --------------------------------------------------------------
 
 
+INVENTORY_DEFAULTS = sa.inventory_plugin_service_accounts.inventory_default_parameters
+
+
+def test_inventory_default_leaves_out_built_in_accounts() -> None:
+    assert INVENTORY_DEFAULTS == {"all_services": False}
+
+
+def test_inventory_can_list_all_services(section) -> None:
+    rows = list(sa.inventory_service_accounts({"all_services": True}, section))
+    assert len(rows) == len(section.services)
+    assert rows[0].key_columns == {"service": "Spooler"}
+    assert rows[0].inventory_columns["kind"] == "local_system"
+
+
+def test_inventory_rule_form_builds() -> None:
+    plugin = sa.inventory_plugin_service_accounts
+    assert (
+        plugin.inventory_ruleset_name == inventory_rules.rule_spec_service_accounts_inventory.name
+    )
+    form = inventory_rules.rule_spec_service_accounts_inventory.parameter_form()
+    assert set(form.elements) == set(INVENTORY_DEFAULTS)
+
+
 def test_inventory_rows(section) -> None:
-    rows = list(sa.inventory_service_accounts(section))
+    rows = list(sa.inventory_service_accounts(INVENTORY_DEFAULTS, section))
     assert [r.key_columns["service"] for r in rows] == [
         "MSSQLSERVER",
         "SQLAgent",
@@ -707,7 +731,7 @@ def test_inventory_rows(section) -> None:
         "Legacy",
     ]
     assert rows[2] == TableRow(
-        path=["software", "applications", "service_accounts"],
+        path=["software", "os", "service_accounts"],
         key_columns={"service": "Backup"},
         inventory_columns={
             "display_name": "Backup Service",
@@ -720,8 +744,10 @@ def test_inventory_rows(section) -> None:
 
 
 def test_inventory_ui_knows_every_column(section) -> None:
-    row = next(iter(sa.inventory_service_accounts(section)))
-    node = inventory_ui.node_software_applications_service_accounts
+    row = next(iter(sa.inventory_service_accounts(INVENTORY_DEFAULTS, section)))
+    node = inventory_ui.node_software_os_service_accounts
+    assert node.title.localize(lambda x: x) == "Windows Service Accounts"
+    assert node.table.view.title.localize(lambda x: x) == "Windows Service Accounts"
     assert list(node.path) == row.path
     assert set(node.table.columns) == {
         *row.key_columns,

@@ -141,12 +141,18 @@ the host. Services without an account are left out of the comparison.
 
 ## Inventory
 
-Table *Software > Applications > Service accounts* with one row per service
-that does not run under a built-in kind: service, display name, account,
-kind, start mode and state. A host on which every service runs under a
-built-in account has no such table. The view *Service accounts* (search:
-`invserviceaccounts_search`) finds the hosts and services that use an
-account; it shows rows after a filter was submitted.
+Table *Software > Operating system > Windows Service Accounts* with one row
+per service that does not run under a built-in kind: service, display name,
+account, kind, start mode and state. A host on which every service runs under
+a built-in account has no such table.
+
+With the rule *Service accounts (Windows)* under *Setup > Hosts > HW/SW
+inventory rules* the table can list every Windows service instead, also the
+ones under built-in accounts; the column *Kind* tells them apart.
+
+The view *Windows Service Accounts* (search: `invserviceaccounts_search`)
+finds the hosts and services that use an account; it shows rows after a
+filter was submitted.
 
 ## Limitations
 

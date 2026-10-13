@@ -491,13 +491,13 @@ check_plugin_service_accounts = CheckPlugin(
 )
 
 
-def inventory_service_accounts(section: Section) -> InventoryResult:
+def inventory_service_accounts(params: Mapping[str, Any], section: Section) -> InventoryResult:
     for service in section.services:
         kind = classify(service.account, service.sid, section.computer, section.machine_sid)
-        if kind in DEFAULT_BUILTIN_KINDS:
+        if kind in DEFAULT_BUILTIN_KINDS and not params.get("all_services"):
             continue
         yield TableRow(
-            path=["software", "applications", "service_accounts"],
+            path=["software", "os", "service_accounts"],
             key_columns={"service": service.name},
             inventory_columns={
                 "display_name": service.display_name,
@@ -512,4 +512,6 @@ def inventory_service_accounts(section: Section) -> InventoryResult:
 inventory_plugin_service_accounts = InventoryPlugin(
     name="service_accounts",
     inventory_function=inventory_service_accounts,
+    inventory_default_parameters={"all_services": False},
+    inventory_ruleset_name="service_accounts_inventory",
 )
