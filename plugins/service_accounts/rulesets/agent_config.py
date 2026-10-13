@@ -24,8 +24,8 @@ def _parameter_form() -> Dictionary:
         help_text=Help(
             "Deploys the agent plugin <tt>service_accounts.ps1</tt>, which reports every "
             "Windows service and the account it runs under. What counts as a service "
-            "account and which accounts are allowed is set in the rule <i>Service accounts "
-            "(Windows)</i> for the service, so changing that never requires baking agents."
+            "account and which accounts are allowed is set in the rule <i>Windows Service "
+            "Accounts</i> for the service, so changing that never requires baking agents."
         ),
         elements={
             "deployment": DictElement(
@@ -66,7 +66,7 @@ def _parameter_form() -> Dictionary:
 
 rule_spec_service_accounts_bakery = AgentConfig(
     name="service_accounts",
-    title=Title("Service accounts (Windows)"),
+    title=Title("Windows Service Accounts"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_parameter_form,
 )

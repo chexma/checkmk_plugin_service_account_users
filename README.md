@@ -39,8 +39,8 @@ mkp enable service_accounts <version>
 
 ## Setup
 
-1. *Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > Service
-   accounts (Windows)*: create a rule with *Deploy the plugin* for the Windows
+1. *Setup > Agents > Windows, Linux, Solaris, AIX > Agent rules > Windows
+   Service Accounts*: create a rule with *Deploy the plugin* for the Windows
    hosts. Optionally let the plugin run asynchronously with a cache interval
    (suggested: 1 hour); useful where translating accounts takes long because a
    domain is not reachable.
@@ -96,7 +96,7 @@ account, otherwise by its name:
 Services under built-in kinds are not reported. Because the kind comes from
 the SID, this works independently of the language of the operating system.
 
-### Rule *Service accounts (Windows)*
+### Rule *Windows Service Accounts*
 
 *Setup > Services > Service monitoring rules*. All settings are optional.
 
@@ -146,7 +146,7 @@ per service that does not run under a built-in kind: service, display name,
 account, kind, start mode and state. A host on which every service runs under
 a built-in account has no such table.
 
-With the rule *Service accounts (Windows)* under *Setup > Hosts > HW/SW
+With the rule *Windows Service Accounts* under *Setup > Hosts > HW/SW
 inventory rules* the table can list every Windows service instead, also the
 ones under built-in accounts; the column *Kind* tells them apart.
 

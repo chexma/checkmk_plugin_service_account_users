@@ -798,6 +798,29 @@ def test_check_rule_form_prefills_the_default_state() -> None:
     )
 
 
+def test_rules_are_named_like_the_service() -> None:
+    for rule in (
+        rules.rule_spec_service_accounts,
+        agent_config.rule_spec_service_accounts_bakery,
+        inventory_rules.rule_spec_service_accounts_inventory,
+    ):
+        assert rule.title.localize(lambda x: x) == "Windows Service Accounts"
+
+
+def test_man_page_has_each_key_once() -> None:
+    man_page = Path(sa.__file__).parent.parent / "checkman" / "service_accounts"
+    keys = [line.split(":")[0] for line in man_page.read_text().splitlines() if line[:1].isalpha()]
+    assert keys == [
+        "title",
+        "agents",
+        "catalog",
+        "license",
+        "distribution",
+        "description",
+        "discovery",
+    ]
+
+
 def test_check_rule_form_ignores_the_discovered_baseline() -> None:
     # The discovery page validates the effective parameters with this form.
     form = rules.rule_spec_service_accounts.parameter_form()

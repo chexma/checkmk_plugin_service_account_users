@@ -241,7 +241,7 @@ def _parameter_form() -> Dictionary:
 
 rule_spec_service_accounts = CheckParameters(
     name="service_accounts",
-    title=Title("Service accounts (Windows)"),
+    title=Title("Windows Service Accounts"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_parameter_form,
     condition=HostCondition(),

@@ -5,6 +5,12 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.6] - 2026-10-13
+
+- The three rules (service, agent bakery, HW/SW inventory) are now called
+  `Windows Service Accounts` (was `Service accounts (Windows)`).
+- Fix: the man page had a duplicated, broken section since 2.5.5.
+
 ## [2.5.5] - 2026-10-13
 
 - The inventory table moved to `Software > Operating system > Windows

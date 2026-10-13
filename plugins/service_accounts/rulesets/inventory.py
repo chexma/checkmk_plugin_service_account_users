@@ -36,7 +36,7 @@ def _parameter_form() -> Dictionary:
 
 rule_spec_service_accounts_inventory = InventoryParameters(
     name="service_accounts_inventory",
-    title=Title("Service accounts (Windows)"),
+    title=Title("Windows Service Accounts"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_parameter_form,
 )
