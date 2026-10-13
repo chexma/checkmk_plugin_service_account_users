@@ -1,4 +1,4 @@
-# Checkmk plugin: Windows service accounts
+# Checkmk plugin: Windows Service Accounts
 
 Shows which Windows services do not run under a built-in system account
 (Local System, Local Service, Network Service, `NT SERVICE\...`) but under a
@@ -33,9 +33,14 @@ Upload the MKP in *Setup > Extension packages* and enable it, or on the command
 line as site user:
 
 ```bash
-mkp add service_accounts-<version>.mkp
-mkp enable service_accounts <version>
+mkp add windows_service_accounts-<version>.mkp
+mkp enable windows_service_accounts <version>
 ```
+
+Up to version 2.5.6 the package was called `service_accounts`. Remove that
+package before installing `windows_service_accounts` (*Extension packages*, or
+`mkp disable service_accounts` and `mkp remove service_accounts <version>`):
+both contain the same files. Rules and services are kept.
 
 ## Setup
 

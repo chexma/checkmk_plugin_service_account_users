@@ -5,6 +5,12 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.7] - 2026-10-13
+
+- The MKP is now called `windows_service_accounts` (was
+  `service_accounts`). Remove the old package before installing the new
+  one: both contain the same files. Rules and services are kept.
+
 ## [2.5.6] - 2026-10-13
 
 - The three rules (service, agent bakery, HW/SW inventory) are now called
