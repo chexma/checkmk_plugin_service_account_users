@@ -5,6 +5,22 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.10] - 2026-10-13
+
+- All internal names are now `windows_service_accounts`: check plugin,
+  agent section, the three rulesets (`windows_service_accounts`,
+  `windows_service_accounts_inventory`), bakery plugin, inventory path
+  (`software > os > windows_service_accounts`), graph, perfometer and man
+  page. Metric names and the view `invserviceaccounts` are unchanged.
+  After the update:
+  1. Create the rules again (service, agent bakery, HW/SW inventory): rules
+     of the old rulesets are no longer evaluated.
+  2. Bake and deploy the agents: the new check only reads the section
+     `<<<windows_service_accounts>>>`.
+  3. Run the service discovery on the hosts and remove the vanished service
+     of the old check.
+- Man page: distribution is the author.
+
 ## [2.5.9] - 2026-10-13
 
 - The plugin files are named `windows_service_accounts.*`, including the

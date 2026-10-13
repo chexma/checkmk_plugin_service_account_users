@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Parameters of the inventory table software > os > service_accounts."""
+"""Parameters of the inventory table software > os > windows_service_accounts."""
 
 from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import BooleanChoice, DefaultValue, DictElement, Dictionary
@@ -34,8 +34,8 @@ def _parameter_form() -> Dictionary:
     )
 
 
-rule_spec_service_accounts_inventory = InventoryParameters(
-    name="service_accounts_inventory",
+rule_spec_windows_service_accounts_inventory = InventoryParameters(
+    name="windows_service_accounts_inventory",
     title=Title("Windows Service Accounts"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_parameter_form,

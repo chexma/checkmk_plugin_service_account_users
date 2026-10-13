@@ -241,6 +241,11 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
 - The plugin files are named `windows_service_accounts.*` (user request),
   the agent plugin is `agents/windows_service_accounts.ps1`. The man page
   keeps the name `service_accounts`: it has to match the check plugin name.
+- All internal names are `windows_service_accounts` (user request): check
+  plugin, section `<<<windows_service_accounts:sep(124)>>>`, rulesets,
+  bakery plugin, inventory path `software > os > windows_service_accounts`,
+  graph, perfometer, man page. Metrics (`service_account_*`) and the view
+  `invserviceaccounts` keep their names.
 - With `changes` configured but no baseline, the summary says so.
 - A changed account with an unchanged name (deleted and created again) is
   reported with both SIDs.

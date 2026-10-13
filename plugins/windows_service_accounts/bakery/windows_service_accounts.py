@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
 """Bakery plugin: deploys windows_service_accounts.ps1 to Windows hosts."""
@@ -17,7 +17,7 @@ class Config(BaseModel):
     interval: float | None = None
 
 
-def get_service_accounts_files(conf: Config) -> FileGenerator:
+def get_windows_service_accounts_files(conf: Config) -> FileGenerator:
     if conf.deployment[0] != "deploy":
         return
     yield Plugin(
@@ -27,9 +27,9 @@ def get_service_accounts_files(conf: Config) -> FileGenerator:
     )
 
 
-bakery_plugin_service_accounts = BakeryPlugin(
-    name="service_accounts",
+bakery_plugin_windows_service_accounts = BakeryPlugin(
+    name="windows_service_accounts",
     parameter_parser=Config.model_validate,
     default_parameters=None,
-    files_function=get_service_accounts_files,
+    files_function=get_windows_service_accounts_files,
 )

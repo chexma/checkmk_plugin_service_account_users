@@ -1,5 +1,5 @@
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
 
@@ -9,9 +9,9 @@
 .DESCRIPTION
     Prints every service, unfiltered. The evaluation (which accounts count as
     service accounts, which are allowed) happens on the Checkmk server in the
-    check plugin service_accounts, so the plugin needs no configuration.
+    check plugin windows_service_accounts, so the plugin needs no configuration.
 
-    <<<service_accounts:sep(124)>>>
+    <<<windows_service_accounts:sep(124)>>>
     computer|<computer name>|<machine SID>
     service|<name>|<display name>|<account>|<account SID>|<start mode>|<state>
     error|<message>
@@ -76,7 +76,7 @@ function Get-AccountSid {
     return $sid
 }
 
-Write-Host '<<<service_accounts:sep(124)>>>'
+Write-Host '<<<windows_service_accounts:sep(124)>>>'
 Write-Host ('computer|{0}|{1}' -f (Format-Field $env:COMPUTERNAME), (Get-MachineSid))
 
 try {

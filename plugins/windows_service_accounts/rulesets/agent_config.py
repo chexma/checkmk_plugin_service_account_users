@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
 """Bakery rule for the agent plugin windows_service_accounts.ps1."""
@@ -64,8 +64,8 @@ def _parameter_form() -> Dictionary:
     )
 
 
-rule_spec_service_accounts_bakery = AgentConfig(
-    name="service_accounts",
+rule_spec_windows_service_accounts_bakery = AgentConfig(
+    name="windows_service_accounts",
     title=Title("Windows Service Accounts"),
     topic=Topic.OPERATING_SYSTEM,
     parameter_form=_parameter_form,

@@ -1,8 +1,8 @@
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Tests for the plugin family service_accounts. All names are fictional."""
+"""Tests for the plugin family windows_service_accounts. All names are fictional."""
 
 from pathlib import Path
 
@@ -48,17 +48,17 @@ STRING_TABLE = _table(AGENT_OUTPUT)
 
 @pytest.fixture(name="section")
 def _section() -> sa.Section:
-    section = sa.parse_service_accounts(STRING_TABLE)
+    section = sa.parse_windows_service_accounts(STRING_TABLE)
     assert section is not None
     return section
 
 
 def _results(params, section) -> list[Result]:
-    return [r for r in sa.check_service_accounts(params, section) if isinstance(r, Result)]
+    return [r for r in sa.check_windows_service_accounts(params, section) if isinstance(r, Result)]
 
 
 def _discovered(section) -> dict:
-    (service,) = sa.discover_service_accounts(section)
+    (service,) = sa.discover_windows_service_accounts(section)
     return dict(service.parameters)
 
 
@@ -71,7 +71,7 @@ def _notices(params, section) -> dict[str, State]:
 
 
 def test_parse_empty_section() -> None:
-    assert sa.parse_service_accounts([]) is None
+    assert sa.parse_windows_service_accounts([]) is None
 
 
 def test_parse_services(section) -> None:
@@ -90,7 +90,7 @@ def test_parse_services(section) -> None:
 
 
 def test_parse_empty_and_missing_fields() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV-APP01"],
             ["service", "NoAccount", "No Account", "", "", "Manual", "Stopped"],
@@ -108,7 +108,7 @@ def test_parse_empty_and_missing_fields() -> None:
 
 
 def test_parse_error_line() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [["computer", "SRV-APP01", MACHINE_SID], ["error", "Access denied"]]
     )
     assert section is not None
@@ -195,13 +195,13 @@ def test_discovery_stores_all_services(section) -> None:
 
 
 def test_discovery_on_error_has_no_baseline() -> None:
-    section = sa.parse_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
-    assert list(sa.discover_service_accounts(section)) == [Service()]
+    section = sa.parse_windows_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
+    assert list(sa.discover_windows_service_accounts(section)) == [Service()]
 
 
 def test_discovery_leaves_out_services_without_account() -> None:
     # Per-user service instances have no account and a new name with every logon.
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV-APP01", MACHINE_SID],
             ["service", "Spooler", "Print Spooler", "LocalSystem", "S-1-5-18", "Auto", "Running"],
@@ -212,15 +212,15 @@ def test_discovery_leaves_out_services_without_account() -> None:
 
 
 def test_no_discovery_without_services_and_error() -> None:
-    section = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID]])
-    assert not list(sa.discover_service_accounts(section))
+    section = sa.parse_windows_service_accounts([["computer", "SRV-APP01", MACHINE_SID]])
+    assert not list(sa.discover_windows_service_accounts(section))
 
 
 # --- check: summary, metrics, details ---------------------------------------
 
 
 def test_check_without_rule_is_ok_and_counts(section) -> None:
-    results = list(sa.check_service_accounts({}, section))
+    results = list(sa.check_windows_service_accounts({}, section))
     assert results[0] == Result(state=State.OK, summary="5 services under 4 service accounts")
     assert Metric("service_account_services", 5) in results
     assert Metric("service_account_accounts", 4) in results
@@ -228,12 +228,12 @@ def test_check_without_rule_is_ok_and_counts(section) -> None:
 
 
 def test_service_name() -> None:
-    assert sa.check_plugin_service_accounts.service_name == "Windows Service Accounts"
+    assert sa.check_plugin_windows_service_accounts.service_name == "Windows Service Accounts"
 
 
 def test_default_is_warn_for_accounts_that_are_not_allowed(section) -> None:
     # Checkmk passes these parameters if no rule matches.
-    defaults = sa.check_plugin_service_accounts.check_default_parameters
+    defaults = sa.check_plugin_windows_service_accounts.check_default_parameters
     assert defaults == {"not_allowed_state": 1}
     assert set(_notices(defaults, section).values()) == {State.WARN}
     assert len(_notices(defaults, section)) == 4
@@ -251,7 +251,7 @@ def test_check_details_have_one_line_per_service(section) -> None:
 
 
 def test_check_singular() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV-APP01", MACHINE_SID],
             ["service", "A", "A", "CONTOSO\\svc_a", DOMAIN_SID + "-1", "Auto", "Running"],
@@ -261,7 +261,7 @@ def test_check_singular() -> None:
 
 
 def test_check_same_account_with_and_without_sid_is_counted_by_key() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV-APP01", MACHINE_SID],
             ["service", "A", "A", "CONTOSO\\svc_a", DOMAIN_SID + "-1", "Auto", "Running"],
@@ -284,8 +284,8 @@ def test_ignore_disabled(section) -> None:
 
 
 def test_query_error_state() -> None:
-    section = sa.parse_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
-    assert list(sa.check_service_accounts({}, section)) == [
+    section = sa.parse_windows_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
+    assert list(sa.check_windows_service_accounts({}, section)) == [
         Result(state=State.UNKNOWN, summary="Agent plugin reported an error: boom")
     ]
     assert _results({"query_error_state": 2}, section)[0].state is State.CRIT
@@ -295,7 +295,7 @@ def test_query_error_state() -> None:
 
 
 def test_service_without_account_is_built_in_by_default() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV-APP01", MACHINE_SID],
             ["service", "A", "A", "", "", "Manual", "Stopped"],
@@ -345,7 +345,7 @@ def test_allowed_matches_the_sid(section) -> None:
 
 
 def test_hostname_placeholder_is_escaped() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [
             ["computer", "SRV.APP01", ""],
             ["service", "A", "A", "SRVXAPP01\\backup", "", "Auto", "Running"],
@@ -449,7 +449,7 @@ def test_invalid_service_pattern_is_reported(section) -> None:
 
 
 def test_account_with_two_spellings_is_matched_under_each_of_them() -> None:
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         _table(
             f"computer|SRV-APP01|{MACHINE_SID}\n"
             f"service|A|A|svc_sql@contoso.example|{DOMAIN_SID}-1105|Auto|Running\n"
@@ -534,7 +534,7 @@ def _with(*lines: str) -> sa.Section:
     A line is "name|display name|account|SID|start mode|state"."""
     new = [["service", *line.split("|")] for line in lines]
     names = {line[1] for line in new}
-    section = sa.parse_service_accounts(
+    section = sa.parse_windows_service_accounts(
         [line for line in STRING_TABLE if line[0] != "service" or line[1] not in names] + new
     )
     assert section is not None
@@ -543,7 +543,9 @@ def _with(*lines: str) -> sa.Section:
 
 def _without(*names: str) -> sa.Section:
     """STRING_TABLE without the named services."""
-    section = sa.parse_service_accounts([line for line in STRING_TABLE if line[1] not in names])
+    section = sa.parse_windows_service_accounts(
+        [line for line in STRING_TABLE if line[1] not in names]
+    )
     assert section is not None
     return section
 
@@ -644,7 +646,7 @@ def test_only_configured_changes_are_reported(section) -> None:
     table = [line for line in STRING_TABLE if line[1] != "Legacy"]
     table.append("service|New|New|CONTOSO\\svc_new||Auto|Running".split("|"))
     params = {"changes": {"removed": 1}, **_discovered(section)}
-    assert _notices(params, sa.parse_service_accounts(table)) == {
+    assert _notices(params, sa.parse_windows_service_accounts(table)) == {
         "Service Legacy (CONTOSO\\old_admin) no longer exists": State.WARN
     }
 
@@ -657,7 +659,9 @@ def test_ignore_disabled_skips_changes_of_disabled_services(section) -> None:
 
 
 def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
-    broken = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID], ["error", "boom"]])
+    broken = sa.parse_windows_service_accounts(
+        [["computer", "SRV-APP01", MACHINE_SID], ["error", "boom"]]
+    )
     params = {"changes": CHANGES, **_discovered(section)}
     assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]
 
@@ -702,7 +706,7 @@ def test_malformed_baseline_does_not_crash(section) -> None:
 # --- inventory --------------------------------------------------------------
 
 
-INVENTORY_DEFAULTS = sa.inventory_plugin_service_accounts.inventory_default_parameters
+INVENTORY_DEFAULTS = sa.inventory_plugin_windows_service_accounts.inventory_default_parameters
 
 
 def test_inventory_default_leaves_out_built_in_accounts() -> None:
@@ -710,23 +714,24 @@ def test_inventory_default_leaves_out_built_in_accounts() -> None:
 
 
 def test_inventory_can_list_all_services(section) -> None:
-    rows = list(sa.inventory_service_accounts({"all_services": True}, section))
+    rows = list(sa.inventory_windows_service_accounts({"all_services": True}, section))
     assert len(rows) == len(section.services)
     assert rows[0].key_columns == {"service": "Spooler"}
     assert rows[0].inventory_columns["kind"] == "local_system"
 
 
 def test_inventory_rule_form_builds() -> None:
-    plugin = sa.inventory_plugin_service_accounts
+    plugin = sa.inventory_plugin_windows_service_accounts
     assert (
-        plugin.inventory_ruleset_name == inventory_rules.rule_spec_service_accounts_inventory.name
+        plugin.inventory_ruleset_name
+        == inventory_rules.rule_spec_windows_service_accounts_inventory.name
     )
-    form = inventory_rules.rule_spec_service_accounts_inventory.parameter_form()
+    form = inventory_rules.rule_spec_windows_service_accounts_inventory.parameter_form()
     assert set(form.elements) == set(INVENTORY_DEFAULTS)
 
 
 def test_inventory_rows(section) -> None:
-    rows = list(sa.inventory_service_accounts(INVENTORY_DEFAULTS, section))
+    rows = list(sa.inventory_windows_service_accounts(INVENTORY_DEFAULTS, section))
     assert [r.key_columns["service"] for r in rows] == [
         "MSSQLSERVER",
         "SQLAgent",
@@ -735,7 +740,7 @@ def test_inventory_rows(section) -> None:
         "Legacy",
     ]
     assert rows[2] == TableRow(
-        path=["software", "os", "service_accounts"],
+        path=["software", "os", "windows_service_accounts"],
         key_columns={"service": "Backup"},
         inventory_columns={
             "display_name": "Backup Service",
@@ -748,8 +753,8 @@ def test_inventory_rows(section) -> None:
 
 
 def test_inventory_ui_knows_every_column(section) -> None:
-    row = next(iter(sa.inventory_service_accounts(INVENTORY_DEFAULTS, section)))
-    node = inventory_ui.node_software_os_service_accounts
+    row = next(iter(sa.inventory_windows_service_accounts(INVENTORY_DEFAULTS, section)))
+    node = inventory_ui.node_software_os_windows_service_accounts
     assert node.title.localize(lambda x: x) == "Windows Service Accounts"
     assert node.table.view.title.localize(lambda x: x) == "Windows Service Accounts"
     assert list(node.path) == row.path
@@ -765,7 +770,7 @@ def test_inventory_ui_knows_every_column(section) -> None:
 
 
 def test_check_rule_form_builds() -> None:
-    form = rules.rule_spec_service_accounts.parameter_form()
+    form = rules.rule_spec_windows_service_accounts.parameter_form()
     assert set(form.elements) == {
         "builtin_kinds",
         "ignore_disabled",
@@ -784,7 +789,7 @@ def test_check_rule_form_builds() -> None:
 
 
 def test_allow_list_entries_have_service_and_account_and_migrate_old_rules() -> None:
-    form = rules.rule_spec_service_accounts.parameter_form()
+    form = rules.rule_spec_windows_service_accounts.parameter_form()
     for name in ("allowed", "allowed_additional"):
         entry = form.elements[name].parameter_form.element_template
         assert list(entry.elements) == ["service", "account"]
@@ -795,8 +800,8 @@ def test_allow_list_entries_have_service_and_account_and_migrate_old_rules() -> 
 
 
 def test_check_rule_form_prefills_the_default_state() -> None:
-    form = rules.rule_spec_service_accounts.parameter_form()
-    defaults = sa.check_plugin_service_accounts.check_default_parameters
+    form = rules.rule_spec_windows_service_accounts.parameter_form()
+    defaults = sa.check_plugin_windows_service_accounts.check_default_parameters
     assert form.elements["not_allowed_state"].parameter_form.prefill.value == (
         defaults["not_allowed_state"]
     )
@@ -804,15 +809,15 @@ def test_check_rule_form_prefills_the_default_state() -> None:
 
 def test_rules_are_named_like_the_service() -> None:
     for rule in (
-        rules.rule_spec_service_accounts,
-        agent_config.rule_spec_service_accounts_bakery,
-        inventory_rules.rule_spec_service_accounts_inventory,
+        rules.rule_spec_windows_service_accounts,
+        agent_config.rule_spec_windows_service_accounts_bakery,
+        inventory_rules.rule_spec_windows_service_accounts_inventory,
     ):
         assert rule.title.localize(lambda x: x) == "Windows Service Accounts"
 
 
 def test_man_page_has_each_key_once() -> None:
-    man_page = Path(sa.__file__).parent.parent / "checkman" / "service_accounts"
+    man_page = Path(sa.__file__).parent.parent / "checkman" / "windows_service_accounts"
     keys = [line.split(":")[0] for line in man_page.read_text().splitlines() if line[:1].isalpha()]
     assert keys == [
         "title",
@@ -827,33 +832,35 @@ def test_man_page_has_each_key_once() -> None:
 
 def test_check_rule_form_ignores_the_discovered_baseline() -> None:
     # The discovery page validates the effective parameters with this form.
-    form = rules.rule_spec_service_accounts.parameter_form()
+    form = rules.rule_spec_windows_service_accounts.parameter_form()
     assert "discovered_services" in form.ignored_elements
 
 
 def test_graphing_uses_the_metrics_of_the_check(section) -> None:
-    yielded = {m.name for m in sa.check_service_accounts({}, section) if isinstance(m, Metric)}
+    yielded = {
+        m.name for m in sa.check_windows_service_accounts({}, section) if isinstance(m, Metric)
+    }
     assert yielded == {
         graphing.metric_service_account_services.name,
         graphing.metric_service_account_accounts.name,
     }
-    assert set(graphing.graph_service_accounts.simple_lines) == yielded
-    assert set(graphing.perfometer_service_accounts.segments) <= yielded
+    assert set(graphing.graph_windows_service_accounts.simple_lines) == yielded
+    assert set(graphing.perfometer_windows_service_accounts.segments) <= yielded
 
 
 # --- bakery -----------------------------------------------------------------
 
 
 def test_bakery_rule_form_builds() -> None:
-    form = agent_config.rule_spec_service_accounts_bakery.parameter_form()
+    form = agent_config.rule_spec_windows_service_accounts_bakery.parameter_form()
     assert set(form.elements) == {"deployment", "interval"}
-    assert agent_config.rule_spec_service_accounts_bakery.name == (
-        bakery.bakery_plugin_service_accounts.name
+    assert agent_config.rule_spec_windows_service_accounts_bakery.name == (
+        bakery.bakery_plugin_windows_service_accounts.name
     )
 
 
 def _bake(rule: dict) -> list:
-    plugin = bakery.bakery_plugin_service_accounts
+    plugin = bakery.bakery_plugin_windows_service_accounts
     return list(plugin.files_function(plugin.parameter_parser(rule)))
 
 
@@ -879,4 +886,4 @@ def test_agent_plugin_exists_and_is_ascii() -> None:
     (plugin,) = _bake({"deployment": ("deploy", None)})
     source = Path(bakery.__file__).parent.parent / "agents" / plugin.source
     assert source.read_bytes().isascii()
-    assert "<<<service_accounts:sep(124)>>>" in source.read_text()
+    assert "<<<windows_service_accounts:sep(124)>>>" in source.read_text()

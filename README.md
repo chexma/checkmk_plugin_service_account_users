@@ -40,7 +40,12 @@ mkp enable windows_service_accounts <version>
 Up to version 2.5.6 the package was called `service_accounts`. Remove that
 package before installing `windows_service_accounts` (*Extension packages*, or
 `mkp disable service_accounts` and `mkp remove service_accounts <version>`):
-both contain the same files. Rules and services are kept.
+both contain the same files.
+
+Since 2.5.10 all internal names are `windows_service_accounts` too (check
+plugin, agent section, rulesets). When updating from an older version, create
+the rules again, bake and deploy the agents and run the service discovery on
+the hosts.
 
 ## Setup
 
@@ -173,7 +178,7 @@ filter was submitted.
 ## Agent output
 
 ```text
-<<<service_accounts:sep(124)>>>
+<<<windows_service_accounts:sep(124)>>>
 computer|<computer name>|<machine SID>
 service|<name>|<display name>|<account>|<account SID>|<start mode>|<state>
 error|<message>

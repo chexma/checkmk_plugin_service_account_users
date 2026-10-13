@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
 """Metrics, graph and perfometer of the service "Windows Service Accounts"."""
@@ -26,15 +26,15 @@ metric_service_account_accounts = Metric(
     color=Color.ORANGE,
 )
 
-graph_service_accounts = Graph(
-    name="service_accounts",
+graph_windows_service_accounts = Graph(
+    name="windows_service_accounts",
     title=Title("Service accounts"),
     simple_lines=["service_account_services", "service_account_accounts"],
     minimal_range=MinimalRange(0, 10),
 )
 
-perfometer_service_accounts = Perfometer(
-    name="service_accounts",
+perfometer_windows_service_accounts = Perfometer(
+    name="windows_service_accounts",
     focus_range=FocusRange(Closed(0), Open(20)),
     segments=["service_account_services"],
 )

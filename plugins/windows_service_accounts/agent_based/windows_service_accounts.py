@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Andre Eckstein - License: GNU General Public License v3
-# This file is part of the Checkmk plugin service_accounts. It is subject to the
+# This file is part of the Checkmk plugin windows_service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
 """Windows services and the accounts they run under.
 
-Section <<<service_accounts:sep(124)>>> (agent plugin windows_service_accounts.ps1):
+Section <<<windows_service_accounts:sep(124)>>> (agent plugin windows_service_accounts.ps1):
 
     computer|<computer name>|<machine SID>
     service|<name>|<display name>|<account>|<account SID>|<start mode>|<state>
@@ -51,7 +51,7 @@ class Section:
     error: str | None
 
 
-def parse_service_accounts(string_table: StringTable) -> Section | None:
+def parse_windows_service_accounts(string_table: StringTable) -> Section | None:
     if not string_table:
         return None
     computer = machine_sid = ""
@@ -71,9 +71,9 @@ def parse_service_accounts(string_table: StringTable) -> Section | None:
     return Section(computer, machine_sid.upper(), services, error)
 
 
-agent_section_service_accounts = AgentSection(
-    name="service_accounts",
-    parse_function=parse_service_accounts,
+agent_section_windows_service_accounts = AgentSection(
+    name="windows_service_accounts",
+    parse_function=parse_windows_service_accounts,
 )
 
 
@@ -161,7 +161,7 @@ def account_key(account: str, sid: str) -> str:
     return sid.upper() or account.lower()
 
 
-def discover_service_accounts(section: Section) -> DiscoveryResult:
+def discover_windows_service_accounts(section: Section) -> DiscoveryResult:
     if section.error is not None:
         # No baseline from a failed query: the check skips the comparison then.
         yield Service()
@@ -307,7 +307,7 @@ def _changes(
     """Compare the services with the ones remembered by the service discovery."""
     for service in sorted(evaluated, key=lambda s: s.name.lower()):
         if not (service.account or service.sid):
-            # Not part of the baseline, see discover_service_accounts.
+            # Not part of the baseline, see discover_windows_service_accounts.
             continue
         old = discovered.get(service.name)
         new_relevant = is_relevant(service.name, service.account, service.sid)
@@ -357,7 +357,7 @@ def _report(findings: Iterable[_Finding]) -> CheckResult:
         yield Result(state=state, notice=text, details=details)
 
 
-def check_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
+def check_windows_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
     if section.error is not None:
         yield Result(
             state=State(params.get("query_error_state", 3)),
@@ -480,24 +480,26 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
     yield from _report(findings)
 
 
-check_plugin_service_accounts = CheckPlugin(
-    name="service_accounts",
+check_plugin_windows_service_accounts = CheckPlugin(
+    name="windows_service_accounts",
     service_name="Windows Service Accounts",
-    discovery_function=discover_service_accounts,
-    check_function=check_service_accounts,
+    discovery_function=discover_windows_service_accounts,
+    check_function=check_windows_service_accounts,
     # Service accounts have to be allowed explicitly; a rule can set the state to OK.
     check_default_parameters={"not_allowed_state": 1},
-    check_ruleset_name="service_accounts",
+    check_ruleset_name="windows_service_accounts",
 )
 
 
-def inventory_service_accounts(params: Mapping[str, Any], section: Section) -> InventoryResult:
+def inventory_windows_service_accounts(
+    params: Mapping[str, Any], section: Section
+) -> InventoryResult:
     for service in section.services:
         kind = classify(service.account, service.sid, section.computer, section.machine_sid)
         if kind in DEFAULT_BUILTIN_KINDS and not params.get("all_services"):
             continue
         yield TableRow(
-            path=["software", "os", "service_accounts"],
+            path=["software", "os", "windows_service_accounts"],
             key_columns={"service": service.name},
             inventory_columns={
                 "display_name": service.display_name,
@@ -509,9 +511,9 @@ def inventory_service_accounts(params: Mapping[str, Any], section: Section) -> I
         )
 
 
-inventory_plugin_service_accounts = InventoryPlugin(
-    name="service_accounts",
-    inventory_function=inventory_service_accounts,
+inventory_plugin_windows_service_accounts = InventoryPlugin(
+    name="windows_service_accounts",
+    inventory_function=inventory_windows_service_accounts,
     inventory_default_parameters={"all_services": False},
-    inventory_ruleset_name="service_accounts_inventory",
+    inventory_ruleset_name="windows_service_accounts_inventory",
 )
