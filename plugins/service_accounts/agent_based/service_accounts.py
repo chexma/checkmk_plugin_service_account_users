@@ -8,6 +8,7 @@ Section <<<service_accounts:sep(124)>>> (agent plugin service_accounts.ps1):
     error|<message>
 """
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -203,6 +204,38 @@ def _plural(count: int, word: str) -> str:
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
 
 
+def match_candidates(account: str, sid: str, computer: str) -> list[str]:
+    """Strings a rule pattern is tried against."""
+    candidates = [account]
+    if sid:
+        candidates.append(sid)
+    if computer and account.startswith(".\\"):
+        candidates.append(computer + account[1:])
+    return candidates
+
+
+def compile_patterns(
+    patterns: Iterable[str], computer: str
+) -> tuple[list[re.Pattern[str]], list[str]]:
+    """Compile rule patterns, return (compiled, invalid).
+
+    $HOSTNAME$ is replaced by the escaped computer name."""
+    compiled, invalid = [], []
+    for pattern in patterns:
+        try:
+            compiled.append(
+                re.compile(pattern.replace("$HOSTNAME$", re.escape(computer)), re.IGNORECASE)
+            )
+        except re.error:
+            invalid.append(pattern)
+    return compiled, invalid
+
+
+def matches_any(patterns: Iterable[re.Pattern[str]], candidates: Iterable[str]) -> bool:
+    candidates = list(candidates)
+    return any(p.fullmatch(c) for p in patterns for c in candidates)
+
+
 def check_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
     if section.error is not None:
         yield Result(
@@ -235,10 +268,41 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
     yield Metric("service_account_services", len(reported))
     yield Metric("service_account_accounts", len(accounts))
 
+    allowed, invalid = compile_patterns(
+        [*params.get("allowed", []), *params.get("allowed_additional", [])], computer
+    )
+    forbidden = []
+    for entry in params.get("forbidden", []):
+        compiled, bad = compile_patterns([entry["pattern"]], computer)
+        invalid += bad
+        forbidden += [(pattern, State(entry["state"])) for pattern in compiled]
+    for pattern in invalid:
+        yield Result(state=State.UNKNOWN, summary=f"Invalid pattern in rule: {pattern!r}")
+
+    def is_allowed(account: str, sid: str) -> bool:
+        return matches_any(allowed, match_candidates(account, sid, computer))
+
+    not_allowed_state = params.get("not_allowed_state")
     for account in sorted(accounts.values(), key=lambda a: a.name.lower()):
+        state = State.OK
+        findings = []
+        if not is_allowed(account.name, account.sid):
+            candidates = match_candidates(account.name, account.sid, computer)
+            for pattern, forbidden_state in forbidden:
+                if matches_any([pattern], candidates):
+                    state = forbidden_state
+                    findings.append("unwanted account")
+                    break
+            if not_allowed_state is not None:
+                state = State.worst(state, State(not_allowed_state))
+                findings.append("not on the allow list")
+        text = _plural(len(account.services), "service")
         yield Result(
-            state=State.OK,
-            notice=f"{_display(account.name)}: {_plural(len(account.services), 'service')}",
+            state=state,
+            notice=(
+                f"{_display(account.name)}: "
+                + (f"{', '.join(findings)} ({text})" if findings else text)
+            ),
             details=_account_details(account),
         )
 

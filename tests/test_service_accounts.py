@@ -46,6 +46,11 @@ def _discovered(section) -> dict:
     return dict(service.parameters)
 
 
+def _notices(params, section) -> dict[str, State]:
+    """Summary text -> state of all results that are not OK."""
+    return {r.summary: r.state for r in _results(params, section) if r.state is not State.OK}
+
+
 # --- parser -----------------------------------------------------------------
 
 
@@ -242,3 +247,98 @@ def test_query_error_state() -> None:
         Result(state=State.UNKNOWN, summary="Agent plugin reported an error: boom")
     ]
     assert _results({"query_error_state": 2}, section)[0].state is State.CRIT
+
+
+# --- check: allow list and unwanted accounts --------------------------------
+
+
+def test_check_account_without_name_is_reported_as_unknown() -> None:
+    section = sa.parse_service_accounts(
+        [
+            ["computer", "SRV-APP01", MACHINE_SID],
+            ["service", "A", "A", "", "", "Manual", "Stopped"],
+        ]
+    )
+    results = _results({"not_allowed_state": 1}, section)
+    assert results[0].summary == "1 service under 1 service account"
+    assert results[1].state is State.WARN
+    assert results[1].summary == "(no account): not on the allow list (1 service)"
+
+
+def test_not_allowed_state_applies_to_every_reported_account(section) -> None:
+    assert _notices({"not_allowed_state": 1}, section) == {
+        ".\\backup: not on the allow list (1 service)": State.WARN,
+        "CONTOSO\\gmsa_web$: not on the allow list (1 service)": State.WARN,
+        "CONTOSO\\old_admin: not on the allow list (1 service)": State.WARN,
+        "CONTOSO\\svc_sql: not on the allow list (2 services)": State.WARN,
+    }
+
+
+def test_allowed_and_allowed_additional_are_combined(section) -> None:
+    params = {
+        "not_allowed_state": 2,
+        "allowed": ["CONTOSO\\\\svc_.*", "contoso\\\\gmsa_web\\$"],
+        "allowed_additional": ["\\$HOSTNAME\\$-is-literal", "$HOSTNAME$\\\\backup"],
+    }
+    assert _notices(params, section) == {
+        "CONTOSO\\old_admin: not on the allow list (1 service)": State.CRIT,
+    }
+
+
+def test_allowed_matches_the_whole_account_only(section) -> None:
+    notices = _notices({"not_allowed_state": 1, "allowed": ["CONTOSO\\\\svc"]}, section)
+    assert "CONTOSO\\svc_sql: not on the allow list (2 services)" in notices
+
+
+def test_allowed_matches_the_sid(section) -> None:
+    params = {"not_allowed_state": 1, "allowed": [DOMAIN_SID + "-.*"]}
+    assert set(_notices(params, section)) == {
+        ".\\backup: not on the allow list (1 service)",
+        "CONTOSO\\old_admin: not on the allow list (1 service)",
+    }
+
+
+def test_hostname_placeholder_is_escaped() -> None:
+    section = sa.parse_service_accounts(
+        [
+            ["computer", "SRV.APP01", ""],
+            ["service", "A", "A", "SRVXAPP01\\backup", "", "Auto", "Running"],
+            ["service", "B", "B", "SRV.APP01\\backup", "", "Auto", "Running"],
+        ]
+    )
+    params = {"not_allowed_state": 1, "allowed": ["$HOSTNAME$\\\\backup"]}
+    assert set(_notices(params, section)) == {
+        "SRVXAPP01\\backup: not on the allow list (1 service)"
+    }
+
+
+def test_forbidden_first_match_wins_and_allow_list_exempts(section) -> None:
+    params = {
+        "allowed": ["CONTOSO\\\\svc_sql"],
+        "forbidden": [
+            {"pattern": ".*admin.*", "state": 2},
+            {"pattern": "CONTOSO\\\\.*", "state": 1},
+        ],
+    }
+    assert _notices(params, section) == {
+        "CONTOSO\\gmsa_web$: unwanted account (1 service)": State.WARN,
+        "CONTOSO\\old_admin: unwanted account (1 service)": State.CRIT,
+    }
+
+
+def test_forbidden_and_not_allowed_take_the_worst_state(section) -> None:
+    params = {"not_allowed_state": 2, "forbidden": [{"pattern": ".*admin.*", "state": 1}]}
+    assert (
+        _notices(params, section)[
+            "CONTOSO\\old_admin: unwanted account, not on the allow list (1 service)"
+        ]
+        is State.CRIT
+    )
+
+
+def test_invalid_pattern_is_reported_and_does_not_crash(section) -> None:
+    params = {"allowed": ["CONTOSO\\\\(svc"], "forbidden": [{"pattern": "[", "state": 2}]}
+    assert _notices(params, section) == {
+        "Invalid pattern in rule: 'CONTOSO\\\\\\\\(svc'": State.UNKNOWN,
+        "Invalid pattern in rule: '['": State.UNKNOWN,
+    }
