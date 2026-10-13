@@ -3,7 +3,9 @@
 import pytest
 from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
 from cmk_addons.plugins.service_accounts.agent_based import service_accounts as sa
+from cmk_addons.plugins.service_accounts.graphing import service_accounts as graphing
 from cmk_addons.plugins.service_accounts.inventory_ui import service_accounts as inventory_ui
+from cmk_addons.plugins.service_accounts.rulesets import service_accounts as rules
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
 DOMAIN_SID = "S-1-5-21-4000-5000-6000"
@@ -506,3 +508,35 @@ def test_inventory_ui_knows_every_column(section) -> None:
         *row.status_columns,
     }
     assert set(node.table.columns["kind"].mapping) == set(sa.KIND_TITLES)
+
+
+# --- rule forms -------------------------------------------------------------
+
+
+def test_check_rule_form_builds() -> None:
+    form = rules.rule_spec_service_accounts.parameter_form()
+    assert set(form.elements) == {
+        "builtin_kinds",
+        "ignore_disabled",
+        "allowed",
+        "allowed_additional",
+        "not_allowed_state",
+        "forbidden",
+        "changes",
+        "query_error_state",
+    }
+    assert tuple(form.elements["builtin_kinds"].parameter_form.prefill.value) == (
+        sa.DEFAULT_BUILTIN_KINDS
+    )
+    kinds = {e.name for e in form.elements["builtin_kinds"].parameter_form.elements}
+    assert kinds == set(sa.KIND_TITLES)
+
+
+def test_graphing_uses_the_metrics_of_the_check(section) -> None:
+    yielded = {m.name for m in sa.check_service_accounts({}, section) if isinstance(m, Metric)}
+    assert yielded == {
+        graphing.metric_service_account_services.name,
+        graphing.metric_service_account_accounts.name,
+    }
+    assert set(graphing.graph_service_accounts.simple_lines) == yielded
+    assert set(graphing.perfometer_service_accounts.segments) <= yielded
