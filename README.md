@@ -8,7 +8,7 @@ on changes since the service discovery.
 
 - One service `Windows Service Accounts` per Windows host
 - HW/SW inventory table with a view to search an account across all hosts
-- Agent plugin `service_accounts.ps1`, deployed with the agent bakery
+- Agent plugin `windows_service_accounts.ps1`, deployed with the agent bakery
 
 Status: the server side is tested (pytest, Checkmk 2.5.0p15 site with canned
 agent output). The PowerShell agent plugin has run on one German Windows
@@ -20,7 +20,7 @@ not verified on real hosts yet.
 - Checkmk 2.5. The version number of the plugin follows the Checkmk release:
   2.5.x is for Checkmk 2.5.
 - A commercial edition for the agent bakery. Without the bakery, copy
-  `service_accounts.ps1` to the plugin directory of the Windows agent by hand.
+  `windows_service_accounts.ps1` to the plugin directory of the Windows agent by hand.
 - Windows hosts with PowerShell 5.1 or newer.
 
 The plugin uses the APIs `cmk.bakery.v2_unstable` and

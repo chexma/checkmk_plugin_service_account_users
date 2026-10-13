@@ -3,7 +3,7 @@
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Bakery rule for the agent plugin service_accounts.ps1."""
+"""Bakery rule for the agent plugin windows_service_accounts.ps1."""
 
 from cmk.rulesets.v1 import Help, Label, Title
 from cmk.rulesets.v1.form_specs import (
@@ -22,7 +22,7 @@ from cmk.rulesets.v1.rule_specs import AgentConfig, Topic
 def _parameter_form() -> Dictionary:
     return Dictionary(
         help_text=Help(
-            "Deploys the agent plugin <tt>service_accounts.ps1</tt>, which reports every "
+            "Deploys the agent plugin <tt>windows_service_accounts.ps1</tt>, which reports every "
             "Windows service and the account it runs under. What counts as a service "
             "account and which accounts are allowed is set in the rule <i>Windows Service "
             "Accounts</i> for the service, so changing that never requires baking agents."

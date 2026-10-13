@@ -5,6 +5,14 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.9] - 2026-10-13
+
+- The plugin files are named `windows_service_accounts.*`, including the
+  agent plugin, which is now `windows_service_accounts.ps1`. Bake and
+  deploy the agents after the update; remove a manually copied
+  `service_accounts.ps1` from the hosts, otherwise the section is sent
+  twice. Check, section and rule names are unchanged.
+
 ## [2.5.8] - 2026-10-13
 
 - The plugin directory is now `windows_service_accounts` (was

@@ -3,7 +3,7 @@
 # This file is part of the Checkmk plugin service_accounts. It is subject to the
 # terms and conditions defined in the file LICENSE in the root of the repository.
 # SPDX-License-Identifier: GPL-3.0-only
-"""Bakery plugin: deploys service_accounts.ps1 to Windows hosts."""
+"""Bakery plugin: deploys windows_service_accounts.ps1 to Windows hosts."""
 
 from pathlib import Path
 from typing import Literal
@@ -22,7 +22,7 @@ def get_service_accounts_files(conf: Config) -> FileGenerator:
         return
     yield Plugin(
         base_os=OS.WINDOWS,
-        source=Path("service_accounts.ps1"),
+        source=Path("windows_service_accounts.ps1"),
         interval=conf.interval,
     )
 

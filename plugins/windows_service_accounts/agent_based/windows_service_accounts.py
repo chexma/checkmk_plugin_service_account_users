@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Windows services and the accounts they run under.
 
-Section <<<service_accounts:sep(124)>>> (agent plugin service_accounts.ps1):
+Section <<<service_accounts:sep(124)>>> (agent plugin windows_service_accounts.ps1):
 
     computer|<computer name>|<machine SID>
     service|<name>|<display name>|<account>|<account SID>|<start mode>|<state>
