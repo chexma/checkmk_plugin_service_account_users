@@ -363,9 +363,81 @@ def test_forbidden_and_not_allowed_take_the_worst_state(section) -> None:
 def test_invalid_pattern_is_reported_and_does_not_crash(section) -> None:
     params = {"allowed": ["CONTOSO\\\\(svc"], "forbidden": [{"pattern": "[", "state": 2}]}
     assert _notices(params, section) == {
-        "Invalid pattern in rule: 'CONTOSO\\\\\\\\(svc'": State.UNKNOWN,
-        "Invalid pattern in rule: '['": State.UNKNOWN,
+        "Invalid pattern in rule: CONTOSO\\\\(svc": State.UNKNOWN,
+        "Invalid pattern in rule: [": State.UNKNOWN,
     }
+
+
+def test_account_with_two_spellings_is_matched_under_each_of_them() -> None:
+    section = sa.parse_service_accounts(
+        _table(
+            f"computer|SRV-APP01|{MACHINE_SID}\n"
+            f"service|A|A|svc_sql@contoso.example|{DOMAIN_SID}-1105|Auto|Running\n"
+            f"service|B|B|CONTOSO\\svc_sql|{DOMAIN_SID}-1105|Auto|Running"
+        )
+    )
+    params = {"not_allowed_state": 2, "allowed": ["CONTOSO\\\\svc_.*"]}
+    assert _notices(params, section) == {}
+    assert "also CONTOSO\\svc_sql" in _results(params, section)[1].details
+
+
+def test_sid_pattern_uses_the_baseline_sid_if_the_translation_failed(section) -> None:
+    # Domain not reachable: the agent sends the account without SID this time.
+    unresolved = _with(
+        "MSSQLSERVER|SQL Server|CONTOSO\\svc_sql||Auto|Running",
+        "SQLAgent|SQL Server Agent|CONTOSO\\svc_sql||Manual|Stopped",
+    )
+    params = {"not_allowed_state": 1, "allowed": [f"{DOMAIN_SID}-1105"], **_discovered(section)}
+    assert "CONTOSO\\svc_sql: not on the allow list (2 services)" not in _notices(
+        params, unresolved
+    )
+
+
+def test_details_name_the_reason(section) -> None:
+    params = {"not_allowed_state": 1, "forbidden": [{"pattern": ".*admin.*", "state": 2}]}
+    details = [r.details for r in _results(params, section)]
+    assert (
+        "CONTOSO\\old_admin (domain account): unwanted account, not on the allow list\n"
+        "  Legacy (Legacy App): Auto, Stopped"
+    ) in details
+
+
+def _many_accounts(count: int) -> sa.Section:
+    return _with(
+        *(f"App{i:02}|App {i:02}|CONTOSO\\svc_app{i:02}||Auto|Running" for i in range(count))
+    )
+
+
+def test_summary_names_at_most_ten_findings(section) -> None:
+    params = {
+        "not_allowed_state": 1,
+        "allowed": ["CONTOSO\\\\(svc_sql|gmsa_web\\$|old_admin)", ".*backup"],
+    }
+    not_ok = [r for r in _results(params, _many_accounts(13)) if r.state is not State.OK]
+    assert len(not_ok) == 11
+    assert not_ok[9].summary == "CONTOSO\\svc_app09: not on the allow list (1 service)"
+    assert not_ok[10].state is State.WARN
+    assert not_ok[10].summary == "3 more findings (see details)"
+    assert not_ok[10].details == (
+        "CONTOSO\\svc_app10 (domain account): not on the allow list(!)\n"
+        "  App10 (App 10): Auto, Running\n"
+        "CONTOSO\\svc_app11 (domain account): not on the allow list(!)\n"
+        "  App11 (App 11): Auto, Running\n"
+        "CONTOSO\\svc_app12 (domain account): not on the allow list(!)\n"
+        "  App12 (App 12): Auto, Running"
+    )
+
+
+def test_summary_names_the_worst_findings_first(section) -> None:
+    params = {
+        "not_allowed_state": 1,
+        "forbidden": [{"pattern": ".*svc_app12", "state": 2}],
+        "allowed": ["CONTOSO\\\\(svc_sql|gmsa_web\\$|old_admin)", ".*backup"],
+    }
+    not_ok = [r for r in _results(params, _many_accounts(13)) if r.state is not State.OK]
+    assert not_ok[0].state is State.CRIT
+    assert not_ok[0].summary.startswith("CONTOSO\\svc_app12: unwanted account")
+    assert not_ok[10].state is State.WARN
 
 
 # --- check: changes since the discovery -------------------------------------
@@ -505,6 +577,32 @@ def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
     broken = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID], ["error", "boom"]])
     params = {"changes": CHANGES, **_discovered(section)}
     assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]
+
+
+def test_changes_without_a_baseline_are_announced(section) -> None:
+    summaries = [r.summary for r in _results({"changes": CHANGES}, section)]
+    assert "No change detection: no baseline, run the service discovery" in summaries
+    assert all("baseline" not in r.summary for r in _results({}, section))
+
+
+def test_recreated_account_shows_the_sids(section) -> None:
+    changed = _with(f"WebApp|Web App|CONTOSO\\gmsa_web$|{DOMAIN_SID}-1999|Auto|Running")
+    params = {"changes": CHANGES, **_discovered(section)}
+    assert list(_notices(params, changed)) == [
+        f"Account of service WebApp changed from CONTOSO\\gmsa_web$ ({DOMAIN_SID}-1106) "
+        f"to CONTOSO\\gmsa_web$ ({DOMAIN_SID}-1999)"
+    ]
+
+
+def test_malformed_baseline_does_not_crash(section) -> None:
+    baseline = {"Legacy": "CONTOSO\\old_admin", "WebApp": {"account": "CONTOSO\\gmsa_web$"}}
+    params = {"changes": CHANGES, "discovered_services": baseline}
+    assert all(isinstance(r.summary, str) for r in _results(params, section))
+    assert not [
+        r
+        for r in _results({"changes": CHANGES, "discovered_services": "x"}, section)
+        if r.state is not State.OK
+    ]
 
 
 # --- inventory --------------------------------------------------------------

@@ -182,6 +182,12 @@ class _Account:
     sid: str
     kind: str
     services: list[WinService]
+    # Further spellings of the same account (same SID), e.g. UPN and DOMAIN\name
+    other_names: list[str]
+
+    @property
+    def names(self) -> list[str]:
+        return [self.name, *self.other_names]
 
 
 def _group_accounts(section: Section, services: Iterable[WinService]) -> dict[str, _Account]:
@@ -194,14 +200,24 @@ def _group_accounts(section: Section, services: Iterable[WinService]) -> dict[st
                 sid=service.sid,
                 kind=classify(service.account, service.sid, section.computer, section.machine_sid),
                 services=[],
+                other_names=[],
             )
-        accounts[key].services.append(service)
+        account = accounts[key]
+        account.services.append(service)
+        if service.account.lower() not in (name.lower() for name in account.names):
+            account.other_names.append(service.account)
     return accounts
 
 
-def _account_details(account: _Account) -> str:
-    head = f"{_display(account.name)} ({KIND_TITLES[account.kind]}"
-    head += f", {account.sid})" if account.sid else ")"
+def _account_details(account: _Account, findings: Sequence[str] = ()) -> str:
+    properties = [KIND_TITLES[account.kind]]
+    if account.sid:
+        properties.append(account.sid)
+    if account.other_names:
+        properties.append(f"also {', '.join(account.other_names)}")
+    head = f"{_display(account.name)} ({', '.join(properties)})"
+    if findings:
+        head += f": {', '.join(findings)}"
     lines = [head] + [
         f"  {s.name} ({s.display_name}): {s.start_mode}, {s.state}"
         for s in sorted(account.services, key=lambda s: s.name.lower())
@@ -257,13 +273,35 @@ def same_account(account_a: str, sid_a: str, account_b: str, sid_b: str) -> bool
     return account_a.lower() == account_b.lower()
 
 
-def _check_changes(
+# Findings named in the summary; further ones are counted there and listed in the details.
+SUMMARY_LIMIT = 10
+
+_STATE_MARKERS = {State.OK: "", State.WARN: "(!)", State.CRIT: "(!!)", State.UNKNOWN: "(?)"}
+_SEVERITY = {State.CRIT: 0, State.UNKNOWN: 1, State.WARN: 2, State.OK: 3}
+
+# state, text for the summary, text for the details
+_Finding = tuple[State, str, str]
+
+
+def _baseline(params: Mapping[str, Any]) -> dict[str, dict[str, str]] | None:
+    """The services remembered by the service discovery, None if there are none."""
+    raw = params.get("discovered_services")
+    if not isinstance(raw, Mapping):
+        return None
+    return {
+        str(name): {"account": str(old.get("account", "")), "sid": str(old.get("sid", ""))}
+        for name, old in raw.items()
+        if isinstance(old, Mapping)
+    }
+
+
+def _changes(
     changes: Mapping[str, int],
     discovered: Mapping[str, Mapping[str, str]],
     section: Section,
     evaluated: Sequence[WinService],
     is_relevant: Callable[[str, str], bool],
-) -> CheckResult:
+) -> Iterable[_Finding]:
     """Compare the services with the ones remembered by the service discovery."""
     for service in sorted(evaluated, key=lambda s: s.name.lower()):
         if not (service.account or service.sid):
@@ -273,31 +311,51 @@ def _check_changes(
         new_relevant = is_relevant(service.account, service.sid)
         if old is None:
             if new_relevant and "added" in changes:
-                yield Result(
-                    state=State(changes["added"]),
-                    notice=f"New service {service.name} runs as {_display(service.account)}",
-                )
+                text = f"New service {service.name} runs as {_display(service.account)}"
+                yield State(changes["added"]), text, text
             continue
         if same_account(old["account"], old["sid"], service.account, service.sid):
             continue
         if (new_relevant or is_relevant(old["account"], old["sid"])) and "changed" in changes:
-            yield Result(
-                state=State(changes["changed"]),
-                notice=(
-                    f"Account of service {service.name} changed from "
-                    f"{_display(old['account'])} to {_display(service.account)}"
-                ),
-            )
+            old_name, new_name = _display(old["account"]), _display(service.account)
+            if old_name.lower() == new_name.lower():
+                # The account was deleted and created again: only the SID tells.
+                old_name += f" ({old['sid']})"
+                new_name += f" ({service.sid})"
+            text = f"Account of service {service.name} changed from {old_name} to {new_name}"
+            yield State(changes["changed"]), text, text
 
     if "removed" not in changes:
         return
     existing = {s.name for s in section.services}
     for name, old in sorted(discovered.items()):
         if name not in existing and is_relevant(old["account"], old["sid"]):
-            yield Result(
-                state=State(changes["removed"]),
-                notice=f"Service {name} ({_display(old['account'])}) no longer exists",
-            )
+            text = f"Service {name} ({_display(old['account'])}) no longer exists"
+            yield State(changes["removed"]), text, text
+
+
+def _report(findings: Iterable[_Finding]) -> CheckResult:
+    """The worst findings go to the summary, the others are counted there."""
+    ordered = sorted(findings, key=lambda finding: _SEVERITY[finding[0]])
+    not_ok = [finding for finding in ordered if finding[0] is not State.OK]
+    for state, text, details in not_ok[:SUMMARY_LIMIT]:
+        yield Result(state=state, notice=text, details=details)
+    if rest := not_ok[SUMMARY_LIMIT:]:
+        yield Result(
+            state=State.worst(*(state for state, _text, _details in rest)),
+            summary=f"{_plural(len(rest), 'more finding')} (see details)",
+            details="\n".join(
+                # The marker goes to the first line: account details have several.
+                (
+                    details.replace("\n", f"{_STATE_MARKERS[state]}\n", 1)
+                    if "\n" in details
+                    else details + _STATE_MARKERS[state]
+                )
+                for state, _text, details in rest
+            ),
+        )
+    for state, text, details in ordered[len(not_ok) :]:
+        yield Result(state=state, notice=text, details=details)
 
 
 def check_service_accounts(params: Mapping[str, Any], section: Section) -> CheckResult:
@@ -312,6 +370,12 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
     builtin_kinds = set(params.get("builtin_kinds", DEFAULT_BUILTIN_KINDS))
     ignore_disabled = params.get("ignore_disabled", False)
     computer = section.computer
+    discovered = _baseline(params)
+    # If the agent could not translate an account this time (domain not
+    # reachable), patterns written against the SID still have to match.
+    known_sids = {
+        old["account"].lower(): old["sid"] for old in (discovered or {}).values() if old["sid"]
+    }
 
     def kind_of(account: str, sid: str) -> str:
         return classify(account, sid, computer, section.machine_sid)
@@ -341,47 +405,60 @@ def check_service_accounts(params: Mapping[str, Any], section: Section) -> Check
         invalid += bad
         forbidden += [(pattern, State(entry["state"])) for pattern in compiled]
     for pattern in invalid:
-        yield Result(state=State.UNKNOWN, summary=f"Invalid pattern in rule: {pattern!r}")
+        yield Result(state=State.UNKNOWN, summary=f"Invalid pattern in rule: {pattern}")
+
+    def candidates_of(names: Sequence[str], sid: str) -> list[str]:
+        sid = sid or next(
+            (known_sids[name.lower()] for name in names if name.lower() in known_sids), ""
+        )
+        return [c for name in names for c in match_candidates(name, sid, computer)]
 
     def is_allowed(account: str, sid: str) -> bool:
-        return matches_any(allowed, match_candidates(account, sid, computer))
+        return matches_any(allowed, candidates_of([account], sid))
 
+    findings: list[_Finding] = []
     not_allowed_state = params.get("not_allowed_state")
     for account in sorted(accounts.values(), key=lambda a: a.name.lower()):
         state = State.OK
-        findings = []
-        if not is_allowed(account.name, account.sid):
-            candidates = match_candidates(account.name, account.sid, computer)
+        reasons = []
+        candidates = candidates_of(account.names, account.sid)
+        if not matches_any(allowed, candidates):
             for pattern, forbidden_state in forbidden:
                 if matches_any([pattern], candidates):
                     state = forbidden_state
-                    findings.append("unwanted account")
+                    reasons.append("unwanted account")
                     break
             if not_allowed_state is not None:
                 state = State.worst(state, State(not_allowed_state))
-                findings.append("not on the allow list")
+                reasons.append("not on the allow list")
         text = _plural(len(account.services), "service")
-        yield Result(
-            state=state,
-            notice=(
+        findings.append(
+            (
+                state,
                 f"{_display(account.name)}: "
-                + (f"{', '.join(findings)} ({text})" if findings else text)
-            ),
-            details=_account_details(account),
+                + (f"{', '.join(reasons)} ({text})" if reasons else text),
+                _account_details(account, reasons),
+            )
         )
 
     changes = params.get("changes")
-    discovered = params.get("discovered_services")
-    if changes and discovered is not None and section.error is None:
-        yield from _check_changes(
-            changes,
-            discovered,
-            section,
-            evaluated,
-            lambda account, sid: (
-                kind_of(account, sid) not in builtin_kinds and not is_allowed(account, sid)
-            ),
-        )
+    if changes and section.error is None:
+        if discovered is None:
+            yield Result(
+                state=State.OK,
+                summary="No change detection: no baseline, run the service discovery",
+            )
+        else:
+            findings += _changes(
+                changes,
+                discovered,
+                section,
+                evaluated,
+                lambda account, sid: (
+                    kind_of(account, sid) not in builtin_kinds and not is_allowed(account, sid)
+                ),
+            )
+    yield from _report(findings)
 
 
 check_plugin_service_accounts = CheckPlugin(

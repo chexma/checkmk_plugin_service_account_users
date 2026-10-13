@@ -204,5 +204,16 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
 - The check rule form ignores the key `discovered_services`, otherwise the
   service discovery page reports an invalid check parameter.
 - Limitations: computer accounts (`DOMAIN\HOST$`) are classified as
-  `managed`; on a domain controller domain accounts are classified as
-  `local_user`; a UPN without SID is classified as `domain`.
+  `managed`; a UPN without SID is classified as `domain`.
+- On a domain controller the agent plugin sends an empty machine SID
+  (`DomainRole` >= 4), so domain accounts are classified by name there.
+- At most 10 findings are named in the summary, the worst first; further
+  ones are counted ("3 more findings (see details)") and listed in the
+  details. The details of an account name the reason of its state.
+- If one account is configured in several spellings (same SID), patterns
+  are tried against all of them.
+- If an account has no SID in the current data, patterns are also tried
+  against the SID remembered for that account name by the service discovery.
+- With `changes` configured but no baseline, the summary says so.
+- A changed account with an unchanged name (deleted and created again) is
+  reported with both SIDs.

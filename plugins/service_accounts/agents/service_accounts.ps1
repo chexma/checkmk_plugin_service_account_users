@@ -28,8 +28,12 @@ function Format-Field {
 }
 
 function Get-MachineSid {
-    # The SID prefix shared by the local accounts of this computer.
+    # The SID prefix shared by the local accounts of this computer. A domain
+    # controller has no local accounts: the query would walk the directory and
+    # return the domain SID, so the field stays empty there.
     try {
+        $role = (Get-CimInstance -ClassName Win32_ComputerSystem -Property DomainRole).DomainRole
+        if ($role -ge 4) { return '' }
         $account = Get-CimInstance -ClassName Win32_UserAccount -Filter 'LocalAccount=True' |
             Select-Object -First 1
         if ($account) {
