@@ -235,6 +235,9 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
   service_accounts`).
 - The rules are titled `Windows Service Accounts` (user request, was
   `Service accounts (Windows)`).
+- The MKP and the plugin directory are called `windows_service_accounts`
+  (user request): files live in `plugins/windows_service_accounts/`. Check
+  plugin, section and ruleset names stay `service_accounts`.
 - With `changes` configured but no baseline, the summary says so.
 - A changed account with an unchanged name (deleted and created again) is
   reported with both SIDs.

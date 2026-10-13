@@ -8,13 +8,15 @@ from pathlib import Path
 
 import pytest
 from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
-from cmk_addons.plugins.service_accounts.agent_based import service_accounts as sa
-from cmk_addons.plugins.service_accounts.bakery import service_accounts as bakery
-from cmk_addons.plugins.service_accounts.graphing import service_accounts as graphing
-from cmk_addons.plugins.service_accounts.inventory_ui import service_accounts as inventory_ui
-from cmk_addons.plugins.service_accounts.rulesets import agent_config
-from cmk_addons.plugins.service_accounts.rulesets import inventory as inventory_rules
-from cmk_addons.plugins.service_accounts.rulesets import service_accounts as rules
+from cmk_addons.plugins.windows_service_accounts.agent_based import service_accounts as sa
+from cmk_addons.plugins.windows_service_accounts.bakery import service_accounts as bakery
+from cmk_addons.plugins.windows_service_accounts.graphing import service_accounts as graphing
+from cmk_addons.plugins.windows_service_accounts.inventory_ui import (
+    service_accounts as inventory_ui,
+)
+from cmk_addons.plugins.windows_service_accounts.rulesets import agent_config
+from cmk_addons.plugins.windows_service_accounts.rulesets import inventory as inventory_rules
+from cmk_addons.plugins.windows_service_accounts.rulesets import service_accounts as rules
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
 DOMAIN_SID = "S-1-5-21-4000-5000-6000"

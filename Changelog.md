@@ -5,6 +5,11 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.8] - 2026-10-13
+
+- The plugin directory is now `windows_service_accounts` (was
+  `service_accounts`). Check, section and rule names are unchanged.
+
 ## [2.5.7] - 2026-10-13
 
 - The MKP is now called `windows_service_accounts` (was
