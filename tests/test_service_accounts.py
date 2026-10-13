@@ -1,8 +1,9 @@
 """Tests for the plugin family service_accounts. All names are fictional."""
 
 import pytest
-from cmk.agent_based.v2 import Metric, Result, Service, State
+from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
 from cmk_addons.plugins.service_accounts.agent_based import service_accounts as sa
+from cmk_addons.plugins.service_accounts.inventory_ui import service_accounts as inventory_ui
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
 DOMAIN_SID = "S-1-5-21-4000-5000-6000"
@@ -468,3 +469,40 @@ def test_no_change_detection_while_the_plugin_reports_an_error(section) -> None:
     broken = sa.parse_service_accounts([["computer", "SRV-APP01", MACHINE_SID], ["error", "boom"]])
     params = {"changes": CHANGES, **_discovered(section)}
     assert list(_notices(params, broken)) == ["Agent plugin reported an error: boom"]
+
+
+# --- inventory --------------------------------------------------------------
+
+
+def test_inventory_rows(section) -> None:
+    rows = list(sa.inventory_service_accounts(section))
+    assert [r.key_columns["service"] for r in rows] == [
+        "MSSQLSERVER",
+        "SQLAgent",
+        "Backup",
+        "WebApp",
+        "Legacy",
+    ]
+    assert rows[2] == TableRow(
+        path=["software", "applications", "service_accounts"],
+        key_columns={"service": "Backup"},
+        inventory_columns={
+            "display_name": "Backup Service",
+            "account": ".\\backup",
+            "kind": "local_user",
+            "start_mode": "Disabled",
+        },
+        status_columns={"state": "Stopped"},
+    )
+
+
+def test_inventory_ui_knows_every_column(section) -> None:
+    row = next(iter(sa.inventory_service_accounts(section)))
+    node = inventory_ui.node_software_applications_service_accounts
+    assert list(node.path) == row.path
+    assert set(node.table.columns) == {
+        *row.key_columns,
+        *row.inventory_columns,
+        *row.status_columns,
+    }
+    assert set(node.table.columns["kind"].mapping) == set(sa.KIND_TITLES)

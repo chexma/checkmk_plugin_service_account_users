@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""Titles and view of the inventory table software > applications > service_accounts."""
+
+from cmk.inventory_ui.v1_unstable import ChoiceField, Node, Table, TextField, Title, View
+
+node_software_applications_service_accounts = Node(
+    name="software_applications_service_accounts",
+    path=["software", "applications", "service_accounts"],
+    title=Title("Service accounts"),
+    table=Table(
+        view=View(name="invserviceaccounts", title=Title("Service accounts")),
+        columns={
+            "service": TextField(Title("Service")),
+            "display_name": TextField(Title("Display name")),
+            "account": TextField(Title("Account")),
+            "kind": ChoiceField(
+                Title("Kind"),
+                mapping={
+                    "local_system": "Local System",
+                    "local_service": "Local Service",
+                    "network_service": "Network Service",
+                    "virtual": "Virtual account",
+                    "local_user": "Local user",
+                    "managed": "Managed service account",
+                    "domain": "Domain account",
+                    "unknown": "Unknown",
+                },
+            ),
+            "start_mode": TextField(Title("Start mode")),
+            "state": TextField(Title("State")),
+        },
+    ),
+)

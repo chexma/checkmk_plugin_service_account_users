@@ -18,11 +18,14 @@ from cmk.agent_based.v2 import (
     CheckPlugin,
     CheckResult,
     DiscoveryResult,
+    InventoryPlugin,
+    InventoryResult,
     Metric,
     Result,
     Service,
     State,
     StringTable,
+    TableRow,
 )
 
 
@@ -376,4 +379,28 @@ check_plugin_service_accounts = CheckPlugin(
     check_function=check_service_accounts,
     check_default_parameters={},
     check_ruleset_name="service_accounts",
+)
+
+
+def inventory_service_accounts(section: Section) -> InventoryResult:
+    for service in section.services:
+        kind = classify(service.account, service.sid, section.computer, section.machine_sid)
+        if kind in DEFAULT_BUILTIN_KINDS:
+            continue
+        yield TableRow(
+            path=["software", "applications", "service_accounts"],
+            key_columns={"service": service.name},
+            inventory_columns={
+                "display_name": service.display_name,
+                "account": service.account,
+                "kind": kind,
+                "start_mode": service.start_mode,
+            },
+            status_columns={"state": service.state},
+        )
+
+
+inventory_plugin_service_accounts = InventoryPlugin(
+    name="service_accounts",
+    inventory_function=inventory_service_accounts,
 )
