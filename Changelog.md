@@ -5,6 +5,10 @@ and the release tags `v<version>`.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-10-13
+
+- License is GPLv3 (`LICENSE`, man page); README for the plugin.
+
 ## [2.5.1] - 2026-10-13
 
 - Summary names at most 10 findings (worst first), the rest is counted and
