@@ -180,3 +180,20 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
   credentials.
 - Checking whether an account is privileged, e.g. member of Domain Admins.
 - One service per account or per Windows service.
+
+## Amendments from the implementation
+
+- `discovered_services` maps a service name to `{"account": <name>,
+  "sid": <SID or "">}`. Accounts are compared by SID if both sides have one,
+  otherwise by name ignoring case, so a SID that cannot be translated on one
+  agent run is not a change.
+- A pattern is also tried against `<computer name>\name` if the service is
+  configured with `.\name`.
+- An invalid pattern yields an UNKNOWN result naming the pattern.
+- With `ignore_disabled`, disabled services are also left out of the change
+  detection.
+- A discovery during a plugin error stores no baseline; without a baseline
+  and during a plugin error there is no change detection.
+- Limitations: computer accounts (`DOMAIN\HOST$`) are classified as
+  `managed`; on a domain controller domain accounts are classified as
+  `local_user`; a UPN without SID is classified as `domain`.
