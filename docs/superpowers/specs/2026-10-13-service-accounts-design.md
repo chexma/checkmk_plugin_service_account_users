@@ -183,8 +183,11 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
 
 ## Amendments from the implementation
 
-- `discovered_services` maps a service name to `{"account": <name>,
-  "sid": <SID or "">}`. Accounts are compared by SID if both sides have one,
+- `discovered_services` holds every service that has an account, also the
+  ones running as LocalSystem (found in the branch review: otherwise a
+  service switched from LocalSystem to a service account is not a `changed`
+  finding, and with Local System not built-in every service is `added`).
+  It maps a service name to `{"account": <name>, "sid": <SID or "">}`. Accounts are compared by SID if both sides have one,
   otherwise by name ignoring case, so a SID that cannot be translated on one
   agent run is not a change.
 - A pattern is also tried against `<computer name>\name` if the service is
@@ -194,6 +197,12 @@ Test data uses fictional names only (CONTOSO, SRV-APP01, round SIDs).
   detection.
 - A discovery during a plugin error stores no baseline; without a baseline
   and during a plugin error there is no change detection.
+- A service without an account gets the kind `no_account` instead of
+  `unknown`. The kind is built-in by default, and such services are left out
+  of the baseline and the change detection (per-user service instances get
+  a new name with every logon). To be confirmed on a real Windows host.
+- The check rule form ignores the key `discovered_services`, otherwise the
+  service discovery page reports an invalid check parameter.
 - Limitations: computer accounts (`DOMAIN\HOST$`) are classified as
   `managed`; on a domain controller domain accounts are classified as
   `local_user`; a UPN without SID is classified as `domain`.

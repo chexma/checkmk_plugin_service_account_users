@@ -149,7 +149,7 @@ def test_classify_by_sid(account: str, sid: str, kind: str) -> None:
         ("CONTOSO\\svc_sql", "domain"),
         ("svc_sql@contoso.example", "domain"),
         ("something", "unknown"),
-        ("", "unknown"),
+        ("", "no_account"),
     ],
 )
 def test_classify_by_name(account: str, kind: str) -> None:
@@ -169,9 +169,10 @@ def test_classify_machine_sid_is_not_a_string_prefix() -> None:
 # --- discovery --------------------------------------------------------------
 
 
-def test_discovery_stores_all_services_not_running_as_local_system(section) -> None:
+def test_discovery_stores_all_services(section) -> None:
     assert _discovered(section) == {
         "discovered_services": {
+            "Spooler": {"account": "LocalSystem", "sid": "S-1-5-18"},
             "Dhcp": {"account": "NT AUTHORITY\\LocalService", "sid": "S-1-5-19"},
             "Dnscache": {"account": "NT-AUTORITÄT\\Netzwerkdienst", "sid": "S-1-5-20"},
             "MSSQL$X": {"account": "NT SERVICE\\MSSQL$X", "sid": "S-1-5-80-1-2-3-4-5"},
@@ -187,6 +188,18 @@ def test_discovery_stores_all_services_not_running_as_local_system(section) -> N
 def test_discovery_on_error_has_no_baseline() -> None:
     section = sa.parse_service_accounts([["computer", "SRV-APP01", ""], ["error", "boom"]])
     assert list(sa.discover_service_accounts(section)) == [Service()]
+
+
+def test_discovery_leaves_out_services_without_account() -> None:
+    # Per-user service instances have no account and a new name with every logon.
+    section = sa.parse_service_accounts(
+        [
+            ["computer", "SRV-APP01", MACHINE_SID],
+            ["service", "Spooler", "Print Spooler", "LocalSystem", "S-1-5-18", "Auto", "Running"],
+            ["service", "CDPUserSvc_1a2b3", "Connected Devices", "", "", "Auto", "Running"],
+        ]
+    )
+    assert list(_discovered(section)["discovered_services"]) == ["Spooler"]
 
 
 def test_no_discovery_without_services_and_error() -> None:
@@ -259,14 +272,18 @@ def test_query_error_state() -> None:
 # --- check: allow list and unwanted accounts --------------------------------
 
 
-def test_check_account_without_name_is_reported_as_unknown() -> None:
+def test_service_without_account_is_built_in_by_default() -> None:
     section = sa.parse_service_accounts(
         [
             ["computer", "SRV-APP01", MACHINE_SID],
             ["service", "A", "A", "", "", "Manual", "Stopped"],
         ]
     )
-    results = _results({"not_allowed_state": 1}, section)
+    assert _results({"not_allowed_state": 1}, section)[0].summary == (
+        "0 services under 0 service accounts"
+    )
+    params = {"not_allowed_state": 1, "builtin_kinds": ["local_system"]}
+    results = _results(params, section)
     assert results[0].summary == "1 service under 1 service account"
     assert results[1].state is State.WARN
     assert results[1].summary == "(no account): not on the allow list (1 service)"
@@ -406,10 +423,23 @@ def test_added_service_under_an_allowed_account_is_not_reported(section) -> None
     assert _notices(params, changed) == {}
 
 
-def test_service_changed_from_local_system_counts_as_added(section) -> None:
+def test_service_changed_from_local_system_is_a_change(section) -> None:
     changed = _with("Spooler|Print Spooler|CONTOSO\\svc_x||Auto|Running")
-    params = {"changes": CHANGES, **_discovered(section)}
-    assert _notices(params, changed) == {"New service Spooler runs as CONTOSO\\svc_x": State.WARN}
+    params = {"changes": {"changed": 2}, **_discovered(section)}
+    assert _notices(params, changed) == {
+        "Account of service Spooler changed from LocalSystem to CONTOSO\\svc_x": State.CRIT
+    }
+
+
+def test_local_system_not_built_in_does_not_report_known_services_as_added(section) -> None:
+    params = {"changes": CHANGES, "builtin_kinds": ["virtual"], **_discovered(section)}
+    assert _notices(params, section) == {}
+
+
+def test_services_without_account_are_left_out_of_the_change_detection(section) -> None:
+    changed = _with("CDPUserSvc_1a2b3|Connected Devices|||Auto|Running")
+    params = {"changes": CHANGES, "builtin_kinds": ["local_system"], **_discovered(section)}
+    assert _notices(params, changed) == {}
 
 
 def test_changed_account(section) -> None:
@@ -534,6 +564,12 @@ def test_check_rule_form_builds() -> None:
     )
     kinds = {e.name for e in form.elements["builtin_kinds"].parameter_form.elements}
     assert kinds == set(sa.KIND_TITLES)
+
+
+def test_check_rule_form_ignores_the_discovered_baseline() -> None:
+    # The discovery page validates the effective parameters with this form.
+    form = rules.rule_spec_service_accounts.parameter_form()
+    assert "discovered_services" in form.ignored_elements
 
 
 def test_graphing_uses_the_metrics_of_the_check(section) -> None:

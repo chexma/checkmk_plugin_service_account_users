@@ -20,6 +20,7 @@ node_software_applications_service_accounts = Node(
                     "local_service": "Local Service",
                     "network_service": "Network Service",
                     "virtual": "Virtual account",
+                    "no_account": "No account",
                     "local_user": "Local user",
                     "managed": "Managed service account",
                     "domain": "Domain account",

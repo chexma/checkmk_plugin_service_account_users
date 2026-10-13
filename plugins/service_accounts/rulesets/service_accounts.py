@@ -37,6 +37,8 @@ def _pattern(title: Title) -> RegularExpression:
 
 def _parameter_form() -> Dictionary:
     return Dictionary(
+        # The baseline the service discovery stores next to the rule parameters.
+        ignored_elements=("discovered_services",),
         help_text=Help(
             "Without a rule the service <i>Service Accounts</i> is always OK and only shows "
             "which Windows services run under a service account."
@@ -58,6 +60,9 @@ def _parameter_form() -> Dictionary:
                         MultipleChoiceElement(
                             name="virtual", title=Title("Virtual accounts (NT SERVICE\\...)")
                         ),
+                        MultipleChoiceElement(
+                            name="no_account", title=Title("Services without an account")
+                        ),
                         MultipleChoiceElement(name="local_user", title=Title("Local users")),
                         MultipleChoiceElement(
                             name="managed",
@@ -67,7 +72,13 @@ def _parameter_form() -> Dictionary:
                         MultipleChoiceElement(name="unknown", title=Title("Unknown accounts")),
                     ],
                     prefill=DefaultValue(
-                        ["local_system", "local_service", "network_service", "virtual"]
+                        [
+                            "local_system",
+                            "local_service",
+                            "network_service",
+                            "virtual",
+                            "no_account",
+                        ]
                     ),
                 ),
             ),

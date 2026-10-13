@@ -73,7 +73,13 @@ agent_section_service_accounts = AgentSection(
 )
 
 
-DEFAULT_BUILTIN_KINDS = ("local_system", "local_service", "network_service", "virtual")
+DEFAULT_BUILTIN_KINDS = (
+    "local_system",
+    "local_service",
+    "network_service",
+    "virtual",
+    "no_account",
+)
 
 
 KIND_TITLES = {
@@ -81,6 +87,7 @@ KIND_TITLES = {
     "local_service": "Local Service",
     "network_service": "Network Service",
     "virtual": "virtual account",
+    "no_account": "no account",
     "local_user": "local user",
     "managed": "managed service account",
     "domain": "domain account",
@@ -129,6 +136,9 @@ def classify(account: str, sid: str, computer: str, machine_sid: str) -> str:
         return "managed" if account.endswith("$") else "domain"
 
     name = account.lower()
+    if not name:
+        # E.g. per-user service instances, whose names change with every logon.
+        return "no_account"
     if name in _WELL_KNOWN_NAMES:
         return _WELL_KNOWN_NAMES[name]
     if name.startswith("nt service\\"):
@@ -159,8 +169,8 @@ def discover_service_accounts(section: Section) -> DiscoveryResult:
             "discovered_services": {
                 s.name: {"account": s.account, "sid": s.sid}
                 for s in section.services
-                if classify(s.account, s.sid, section.computer, section.machine_sid)
-                != "local_system"
+                # Without an account: names change with every logon, no baseline.
+                if s.account or s.sid
             }
         }
     )
@@ -256,10 +266,12 @@ def _check_changes(
 ) -> CheckResult:
     """Compare the services with the ones remembered by the service discovery."""
     for service in sorted(evaluated, key=lambda s: s.name.lower()):
+        if not (service.account or service.sid):
+            # Not part of the baseline, see discover_service_accounts.
+            continue
         old = discovered.get(service.name)
         new_relevant = is_relevant(service.account, service.sid)
         if old is None:
-            # Not in the baseline: the service is new or ran as LocalSystem.
             if new_relevant and "added" in changes:
                 yield Result(
                     state=State(changes["added"]),
