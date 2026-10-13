@@ -1,0 +1,24 @@
+{'author': 'chexma',
+ 'description': 'Shows which Windows services do not run under a built-in '
+                'system account (Local System, Local Service, Network Service, '
+                'virtual accounts) but under a service account, and can alert '
+                'on accounts that are not allowed or unwanted and on changes '
+                "since the service discovery. One service 'Service Accounts' "
+                'per host, a HW/SW inventory table with a view for searching '
+                'accounts across hosts, and the agent plugin '
+                'service_accounts.ps1, deployed with the agent bakery.\n',
+ 'download_url': '',
+ 'files': {'cmk_addons_plugins': ['service_accounts/agent_based/service_accounts.py',
+                                  'service_accounts/agents/service_accounts.ps1',
+                                  'service_accounts/bakery/service_accounts.py',
+                                  'service_accounts/checkman/service_accounts',
+                                  'service_accounts/graphing/service_accounts.py',
+                                  'service_accounts/inventory_ui/service_accounts.py',
+                                  'service_accounts/rulesets/agent_config.py',
+                                  'service_accounts/rulesets/service_accounts.py']},
+ 'name': 'service_accounts',
+ 'title': 'Windows service accounts',
+ 'version': '0.1.0',
+ 'version.min_required': '2.5.0',
+ 'version.packaged': 'cmk-mkp-tool 3.0.0',
+ 'version.usable_until': None}
