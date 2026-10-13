@@ -1,10 +1,14 @@
 """Tests for the plugin family service_accounts. All names are fictional."""
 
+from pathlib import Path
+
 import pytest
 from cmk.agent_based.v2 import Metric, Result, Service, State, TableRow
 from cmk_addons.plugins.service_accounts.agent_based import service_accounts as sa
+from cmk_addons.plugins.service_accounts.bakery import service_accounts as bakery
 from cmk_addons.plugins.service_accounts.graphing import service_accounts as graphing
 from cmk_addons.plugins.service_accounts.inventory_ui import service_accounts as inventory_ui
+from cmk_addons.plugins.service_accounts.rulesets import agent_config
 from cmk_addons.plugins.service_accounts.rulesets import service_accounts as rules
 
 MACHINE_SID = "S-1-5-21-1000-2000-3000"
@@ -540,3 +544,44 @@ def test_graphing_uses_the_metrics_of_the_check(section) -> None:
     }
     assert set(graphing.graph_service_accounts.simple_lines) == yielded
     assert set(graphing.perfometer_service_accounts.segments) <= yielded
+
+
+# --- bakery -----------------------------------------------------------------
+
+
+def test_bakery_rule_form_builds() -> None:
+    form = agent_config.rule_spec_service_accounts_bakery.parameter_form()
+    assert set(form.elements) == {"deployment", "interval"}
+    assert agent_config.rule_spec_service_accounts_bakery.name == (
+        bakery.bakery_plugin_service_accounts.name
+    )
+
+
+def _bake(rule: dict) -> list:
+    plugin = bakery.bakery_plugin_service_accounts
+    return list(plugin.files_function(plugin.parameter_parser(rule)))
+
+
+def test_bakery_deploys_the_windows_plugin() -> None:
+    (plugin,) = _bake({"deployment": ("deploy", None)})
+    assert str(plugin.base_os) == "windows"
+    assert str(plugin.source) == "service_accounts.ps1"
+    assert plugin.interval is None
+
+
+def test_bakery_interval() -> None:
+    (plugin,) = _bake({"deployment": ("deploy", None), "interval": 3600.0})
+    assert plugin.interval == 3600
+
+
+def test_bakery_do_not_deploy() -> None:
+    assert not _bake({"deployment": ("do_not_deploy", None), "interval": 3600.0})
+
+
+def test_agent_plugin_exists_and_is_ascii() -> None:
+    # The bakery takes the source from the family's agents/ directory. Windows
+    # PowerShell 5.1 reads a script without BOM in the ANSI code page.
+    (plugin,) = _bake({"deployment": ("deploy", None)})
+    source = Path(bakery.__file__).parent.parent / "agents" / plugin.source
+    assert source.read_bytes().isascii()
+    assert "<<<service_accounts:sep(124)>>>" in source.read_text()
